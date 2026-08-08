@@ -379,7 +379,7 @@ window.DB = (function () {
           }
         }
       } catch (_) { /* 静默失败，下一轮再试 */ }
-    }, 15000);
+    }, 6000);
   }
   function stopAutoPull() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }

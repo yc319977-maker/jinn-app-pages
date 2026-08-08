@@ -6,20 +6,18 @@
 <meta name="theme-color" content="#E8A87C">
 <title>JINN GROW 工作台</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" href="icon-512.png">
 <link rel="apple-touch-icon" href="icon-512.png">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="app">
-  <!-- 侧边栏（桌面） -->
+  <!-- 侧边栏（始终常开，不折叠） -->
   <aside class="sidebar" id="sidebar"></aside>
-  <div class="nav-mask" id="navMask"></div>
 
   <!-- 主区 -->
   <div class="main">
     <header class="topbar">
-      <button class="icon-btn nav-toggle" id="navToggle" aria-label="打开菜单">☰</button>
       <div>
         <div class="title" id="pageTitle">JINN GROW 工作台</div>
         <div class="date" id="pageDate"></div>
@@ -32,9 +30,6 @@
     <div class="content">
       <div id="view"></div>
     </div>
-
-    <!-- 底部导航（手机） -->
-    <nav class="bottomnav" id="bottomnav"></nav>
   </div>
 </div>
 

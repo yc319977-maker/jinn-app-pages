@@ -67,21 +67,40 @@
     { id: 'aiprofile', name: 'AI 档案', short: 'AI', icon: '🤖' },
     { id: 'trash', name: '回收站', short: '回收站', icon: '🗑️' },
   ];
-  const BOTTOM = MODULES.map((m) => m.id);
 
   function renderNav() {
     const sb = $('#sidebar');
+    const counts = navCounts();
     sb.innerHTML = `<div class="brand">
-        <img src="icon.svg" alt=""><div><b>JINN GROW</b><small>成长工作台</small></div></div>` +
-      MODULES.map((m) => `<button class="nav-item ${m.id === App.current ? 'active' : ''}" data-act="nav" data-id="${m.id}">
-        <span class="ic">${m.icon}</span><span>${m.name}</span></button>`).join('');
+        <img src="icon-512.png" alt=""><div><b>JINN GROW</b><small>成长工作台</small></div></div>` +
+      MODULES.map((m) => {
+        const n = counts[m.id] || 0;
+        const badge = n > 0 ? `<span class="nav-badge">${n > 99 ? '99+' : n}</span>` : '';
+        return `<button class="nav-item ${m.id === App.current ? 'active' : ''}" data-act="nav" data-id="${m.id}">
+          <span class="ic">${m.icon}</span><span class="nav-label">${m.name}</span>${badge}</button>`;
+      }).join('');
+  }
 
-    const bn = $('#bottomnav');
-    bn.innerHTML = BOTTOM.map((id) => {
-      const m = MODULES.find((x) => x.id === id);
-      return `<button class="${id === App.current ? 'active' : ''}" data-act="nav" data-id="${id}">
-        <span class="ic">${m.icon}</span><span>${m.short}</span></button>`;
-    }).join('');
+  // 各模块顶部数字气泡：今天未完成/未处理/未归档
+  function navCounts() {
+    const s = App.state;
+    const td = today();
+    return {
+      today: s.tasks.filter((t) => !t.canceled && t.date <= td && !t.done).length,
+      month: 0,
+      growth: s.growth.filter((g) => g.type !== 'action').length,
+      inspiration: s.inspirations.filter((i) => !i.confirmed).length,
+      content: s.content.filter((c) => c.status !== '已发布' && c.status !== '完结').length,
+      hot: s.hotspots.filter((h) => !h.collected).length,
+      crm: s.customers.filter((c) => c.stage !== '成交' && c.stage !== '长期培育').length,
+      ecom: s.ecommerce.length,
+      self: s.english.length + s.health.length,
+      wealth: s.income.length,
+      review: s.reviews.length,
+      decision: s.decisions.length,
+      aiprofile: 0,
+      trash: (s.trash || []).length,
+    };
   }
 
   function setPage(title) { $('#pageTitle').textContent = title; }
@@ -89,7 +108,6 @@
     App.current = id; renderNav(); render();
     const m = MODULES.find((x) => x.id === id);
     if (m) setPage(m.name);
-    document.body.classList.remove('nav-open');
     window.scrollTo(0, 0);
   }
 
@@ -1245,6 +1263,7 @@
       trash: renderTrash,
     };
     (map[App.current] || renderToday)();
+    renderNav(); // 顶部数字气泡刷新
   }
 
   /* ---------------- 云端拉取后自动刷新界面 ---------------- */
@@ -1272,8 +1291,6 @@
     onAct(el.dataset.act, el.dataset.id, el.dataset.type, el);
   });
   $('#settingsBtn').onclick = renderSettings;
-  $('#navToggle').onclick = () => document.body.classList.toggle('nav-open');
-  $('#navMask').onclick = () => document.body.classList.remove('nav-open');
 
   /* ---------------- 首次启动种子 ---------------- */
   function seed() {

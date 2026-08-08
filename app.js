@@ -868,8 +868,8 @@
   function renderSettings() {
     const m = App.state.meta || {};
     openForm('⚙️ 设置 · 云端同步', [
-      { key: 'syncUrl', label: '同步地址', value: m.syncUrl, placeholder: 'https://你的中转地址.workers.dev', hint: '自动同步的服务器地址（按我给你的步骤创建 Cloudflare Worker 后填这里）' },
-      { key: 'syncToken', label: '同步令牌（可选）', value: m.syncToken, placeholder: '自己设的一串字，如 jinn2026', hint: '防止别人看到你的数据，建议填一个只有你知道的口令' },
+      { key: 'syncUrl', label: '同步地址', value: m.syncUrl, placeholder: 'yc319977-maker/jinn-sync-data', hint: 'GitHub 私有仓库名，格式为 用户名/仓库名（不要加 https:// 前缀）' },
+      { key: 'syncToken', label: '同步令牌（必需）', value: m.syncToken, placeholder: 'github_pat_ 开头的个人访问令牌', hint: 'GitHub 细粒度 PAT，仅授权那个私有仓库的 Contents 读写权限；只存本机，不会上传云端' },
       { key: 'aiKey', label: 'AI Key（可选）', value: m.aiKey, placeholder: '留空则用本地启发式 AI', hint: '兼容 OpenAI 的 Key，未来可升级云端 AI' },
       { key: 'aiBase', label: 'AI 接口地址（可选）', value: m.aiBase, placeholder: 'https://api.openai.com/v1' },
     ], null, (fd) => {
@@ -1081,6 +1081,24 @@
     (map[App.current] || renderToday)();
   }
 
+  /* ---------------- 云端拉取后自动刷新界面 ---------------- */
+  /* db.js 在「云端有更新」时会调用 window.__onSyncPull__(最新数据)；
+     这里接住它：直接把最新数据写进内存并刷新当前视图，做到无感同步。
+     - 启动阶段（booted=false）由 boot() 统一渲染，这里只存数据不重绘，避免闪烁。
+     - 用户正在弹窗填表 / 正在输入框打字时，跳过本次重绘（数据已落本地，关弹窗或失焦后自然显示）。 */
+  let booted = false;
+  window.__onSyncPull__ = function (data) {
+    if (!data) return;
+    App.state = data;
+    ensure();
+    if (!booted) return;
+    const ae = document.activeElement;
+    const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+    if (modalHost.classList.contains('show') || typing) return;
+    render();
+    toast('已同步最新内容 ☁️');
+  };
+
   /* ---------------- 事件绑定 ---------------- */
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]'); if (!el) return;
@@ -1116,6 +1134,7 @@
     render();
     setPage('今日工作台');
     $('#pageDate').textContent = today() + ' · ' + ['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()];
+    booted = true;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

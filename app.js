@@ -42,7 +42,10 @@
   let saveTimer = null;
   function save() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { DB.saveAll(App.state); }, 350);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;       // 倒计时结束清空，让自动拉取可以再次覆盖
+      DB.saveAll(App.state);
+    }, 350);
   }
   function commit() { ensure(); save(); render(); }
 
@@ -1089,6 +1092,7 @@
   let booted = false;
   window.__onSyncPull__ = function (data) {
     if (!data) return;
+    if (saveTimer) return;                      // 有未保存的本地修改：拒绝云端覆盖，避免把刚删/刚改的覆盖回去（修复复活 bug）
     App.state = data;
     ensure();
     if (!booted) return;

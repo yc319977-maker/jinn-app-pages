@@ -225,9 +225,10 @@ header.topbar {
   display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
   background: rgba(255,253,249,.94); backdrop-filter: blur(10px);
   border-top: 1px solid var(--line); padding: 7px 6px calc(7px + env(safe-area-inset-bottom));
-  grid-template-columns: repeat(5, 1fr); gap: 2px;
+  gap: 2px; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; -ms-overflow-style: none;
 }
-.bottomnav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--ink-soft); padding: 4px 0; border-radius: 10px; }
+.bottomnav::-webkit-scrollbar { display: none; }
+.bottomnav button { display: flex; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--ink-soft); padding: 4px 11px; min-width: 58px; border-radius: 10px; }
 .bottomnav button .ic { font-size: 19px; }
 .bottomnav button.active { color: var(--terra-d); background: #FBF1E4; }
 
@@ -270,19 +271,19 @@ body.nav-open .nav-mask { display: block; }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 860px) {
-  .nav-toggle { display: grid; }
-  .sidebar {
-    display: block;
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 40;
-    width: 232px; max-width: 82vw;
-    transform: translateX(-100%); transition: transform .25s ease;
-    box-shadow: 0 0 40px rgba(120,90,60,.18);
-  }
-  body.nav-open .sidebar { transform: translateX(0); }
-  .bottomnav { display: none; }
-  .content { padding: 16px 14px 40px; }
+  .nav-toggle { display: none; }
+  .sidebar { display: none; }
+  .bottomnav { display: flex; }
+  .content { padding: 16px 14px 84px; }
   .topbar { padding: 14px 16px; }
 }
+
+/* ---------- 回收站 ---------- */
+.trash-bar { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: var(--radius-s); padding: 10px 12px; box-shadow: var(--shadow); margin-bottom: 14px; flex-wrap: wrap; }
+.trash-selall { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.trash-selall input, .trash-check input { width: auto; }
+.trash-check { display: flex; align-items: flex-start; padding-top: 2px; flex-shrink: 0; }
+.li-main { flex: 1; min-width: 0; }
 .section-title { font-size: 19px; font-weight: 800; margin: 2px 0 4px; }
 .section-sub { color: var(--ink-soft); font-size: 13px; margin-bottom: 16px; }
 .toast {

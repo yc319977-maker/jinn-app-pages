@@ -37,6 +37,7 @@
       });
     if (!s.aiProfile) s.aiProfile = {};
     if (!s.meta) s.meta = {};
+    if (!Array.isArray(s.trash)) s.trash = [];
   }
 
   let saveTimer = null;
@@ -51,35 +52,35 @@
 
   /* ---------------- 模块导航 ---------------- */
   const MODULES = [
-    { id: 'today', name: '今日工作台', icon: '🌱', home: true },
-    { id: 'month', name: '成长月历', icon: '📅' },
-    { id: 'growth', name: '成长地图', icon: '🗺️' },
-    { id: 'inspiration', name: '灵感站', icon: '💡' },
-    { id: 'content', name: '婧婧内容宇宙', icon: '🎬' },
-    { id: 'hot', name: '热点雷达', icon: '📡' },
-    { id: 'crm', name: '教育 CRM', icon: '🌿' },
-    { id: 'ecom', name: '电商实验室', icon: '🛒' },
-    { id: 'self', name: '个人成长', icon: '🌟' },
-    { id: 'wealth', name: '财富中心', icon: '💰' },
-    { id: 'review', name: '复盘室', icon: '🪞' },
-    { id: 'decision', name: '决策库', icon: '🧭' },
-    { id: 'aiprofile', name: 'AI 档案', icon: '🤖' },
+    { id: 'today', name: '今日工作台', short: '今日', icon: '🌱', home: true },
+    { id: 'month', name: '成长月历', short: '月历', icon: '📅' },
+    { id: 'growth', name: '成长地图', short: '成长', icon: '🗺️' },
+    { id: 'inspiration', name: '灵感站', short: '灵感', icon: '💡' },
+    { id: 'content', name: '婧婧内容宇宙', short: '内容', icon: '🎬' },
+    { id: 'hot', name: '热点雷达', short: '热点', icon: '📡' },
+    { id: 'crm', name: '教育 CRM', short: '教育', icon: '🌿' },
+    { id: 'ecom', name: '电商实验室', short: '电商', icon: '🛒' },
+    { id: 'self', name: '个人成长', short: '自我', icon: '🌟' },
+    { id: 'wealth', name: '财富中心', short: '财富', icon: '💰' },
+    { id: 'review', name: '复盘室', short: '复盘', icon: '🪞' },
+    { id: 'decision', name: '决策库', short: '决策', icon: '🧭' },
+    { id: 'aiprofile', name: 'AI 档案', short: 'AI', icon: '🤖' },
+    { id: 'trash', name: '回收站', short: '回收站', icon: '🗑️' },
   ];
-  const BOTTOM = ['today', 'month', 'content', 'crm', 'more'];
+  const BOTTOM = MODULES.map((m) => m.id);
 
   function renderNav() {
     const sb = $('#sidebar');
     sb.innerHTML = `<div class="brand">
-        <img src="icon.svg" alt=""><div><b>第二大脑</b><small>jinn 的成长工作台</small></div></div>` +
+        <img src="icon.svg" alt=""><div><b>JINN GROW</b><small>成长工作台</small></div></div>` +
       MODULES.map((m) => `<button class="nav-item ${m.id === App.current ? 'active' : ''}" data-act="nav" data-id="${m.id}">
         <span class="ic">${m.icon}</span><span>${m.name}</span></button>`).join('');
 
     const bn = $('#bottomnav');
     bn.innerHTML = BOTTOM.map((id) => {
-      if (id === 'more') return `<button data-act="open-sheet"><span class="ic">☰</span><span>更多</span></button>`;
       const m = MODULES.find((x) => x.id === id);
       return `<button class="${id === App.current ? 'active' : ''}" data-act="nav" data-id="${id}">
-        <span class="ic">${m.icon}</span><span>${m.name.replace('工作台', '').replace('婧婧', '')}</span></button>`;
+        <span class="ic">${m.icon}</span><span>${m.short}</span></button>`;
     }).join('');
   }
 
@@ -850,7 +851,7 @@
     const a = document.createElement('a');
     const d = new Date(), p = (n) => String(n).padStart(2, '0');
     a.href = url;
-    a.download = `第二大脑备份_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.json`;
+    a.download = `JINN GROW 备份_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1500);
     toast('已导出备份文件 ✅ 去「文件」里找到它，发给自己（微信/邮件）就能换设备');
@@ -926,7 +927,7 @@
       case 'add-cal-task': { const inp = $('#qa-cal'); const v = inp ? inp.value.trim() : ''; if (v) addTask('todo', v, App.selDay); break; }
       case 'toggle-task': { const t = find(s.tasks, id); if (t) { t.done = !t.done; if (t.done) t.doneAt = today(); save(); render(); } break; }
       case 'edit-task': editTask(id); break;
-      case 'del-task': remove(s.tasks, id); save(); render(); break;
+      case 'del-task': if (trashItem('tasks', id, 'task')) { save(); render(); toast('已移入回收站，可以随时恢复 🌿'); } break;
       case 'cont-task': { const t = find(s.tasks, id); if (t) { t.date = today(); save(); render(); toast('已移到今天 🌱'); } break; }
       case 'cancel-task': { const t = find(s.tasks, id); if (t) { t.canceled = true; save(); renderToday(); toast('已归档，不给自己压力'); } break; }
       case 'defer-task': {
@@ -941,47 +942,66 @@
 
       case 'add-growth': editGrowth(null, type, el.dataset.parent); break;
       case 'edit-growth': editGrowth(id); break;
-      case 'del-growth': remove(s.growth, id); save(); renderGrowth(); break;
+      case 'del-growth': if (trashItem('growth', id, 'other')) { save(); renderGrowth(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-insp': { const inp = $('#qa-insp'); const v = inp.value.trim(); if (v) { addInsp(v); inp.value = ''; } break; }
       case 'confirm-insp': confirmInsp(id); break;
-      case 'del-insp': remove(s.inspirations, id); save(); renderInspiration(); break;
+      case 'del-insp': if (trashItem('inspirations', id, 'inspiration')) { save(); renderInspiration(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'filter-content': contentCol = id; renderContent(); break;
       case 'add-content': editContent(null); break;
       case 'edit-content': editContent(id); break;
-      case 'del-content': remove(s.content, id); save(); renderContent(); break;
+      case 'del-content': if (trashItem('content', id, 'content')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'gen-hot': genHot(); break;
       case 'add-hot': editHot(null); break;
       case 'collect-hot': collectHot(id); break;
-      case 'del-hot': remove(s.hotspots, id); save(); renderHot(); break;
+      case 'del-hot': if (trashItem('hotspots', id, 'other')) { save(); renderHot(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-customer': editCustomer(null); break;
       case 'edit-customer': editCustomer(id); break;
-      case 'del-customer': remove(s.customers, id); save(); renderCRM(); break;
+      case 'del-customer': if (trashItem('customers', id, 'customer')) { save(); renderCRM(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'filter-ecom': ecomCat = id; renderEcom(); break;
       case 'add-ecom': editEcom(null); break;
       case 'edit-ecom': editEcom(id); break;
-      case 'del-ecom': remove(s.ecommerce, id); save(); renderEcom(); break;
+      case 'del-ecom': if (trashItem('ecommerce', id, 'other')) { save(); renderEcom(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-english': addEnglish(); break;
-      case 'del-english': remove(s.english, id); save(); renderSelf(); break;
+      case 'del-english': if (trashItem('english', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
       case 'add-health': addHealth(); break;
-      case 'del-health': remove(s.health, id); save(); renderSelf(); break;
+      case 'del-health': if (trashItem('health', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-income': addIncome(); break;
-      case 'del-income': remove(s.income, id); save(); renderWealth(); break;
+      case 'del-income': if (trashItem('income', id, 'income')) { save(); renderWealth(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-review': editReview(null, type); break;
       case 'edit-review': editReview(id); break;
       case 'ai-review': aiReview(id); break;
-      case 'del-review': remove(s.reviews, id); save(); renderReview(); break;
+      case 'del-review': if (trashItem('reviews', id, 'other')) { save(); renderReview(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-decision': editDecision(null); break;
       case 'edit-decision': editDecision(id); break;
-      case 'del-decision': remove(s.decisions, id); save(); renderDecision(); break;
+      case 'del-decision': if (trashItem('decisions', id, 'other')) { save(); renderDecision(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+
+      /* ---- 回收站操作 ---- */
+      case 'trash-filter': App.trashFilter = id; renderTrash(); break;
+      case 'trash-toggle': { App.trashSel = App.trashSel || {}; App.trashSel[id] = el.checked; renderTrash(); break; }
+      case 'trash-restore': restoreFromTrash(id); break;
+      case 'trash-purge': purgeFromTrash(id); break;
+      case 'trash-restore-sel': {
+        const sel = App.trashSel || {}; const ids = Object.keys(sel).filter((k) => sel[k]);
+        if (!ids.length) break;
+        ids.forEach(doRestore); App.trashSel = {}; save(); renderTrash(); toast('已恢复 ' + ids.length + ' 项，回到了原来的位置 🌱'); break;
+      }
+      case 'trash-purge-sel': {
+        const sel = App.trashSel || {}; const ids = Object.keys(sel).filter((k) => sel[k]);
+        if (!ids.length) break;
+        confirmModal('确定永久删除选中的 ' + ids.length + ' 条数据吗？永久删除后将无法恢复', () => {
+          ids.forEach(doPurge); App.trashSel = {}; save(); renderTrash(); toast('已彻底移除 ' + ids.length + ' 项 🌿');
+        });
+        break;
+      }
 
       case 'confirm-obs': {
         s.aiProfile.confirmed = s.aiProfile.confirmed || [];
@@ -1074,12 +1094,155 @@
     });
   }
 
+  /* ============================================================
+   *  全局回收站（软删除集中地 · 随云端同步）
+   * ============================================================ */
+  // 实体 → 回收站分类（用于筛选）
+  function catOf(entityKey) {
+    return ({ tasks: 'task', content: 'content', customers: 'customer', inspirations: 'inspiration', income: 'income' })[entityKey] || 'other';
+  }
+  // 实体 → 原模块中文名
+  function moduleNameOf(k) {
+    return ({ tasks: '今日任务', growth: '成长地图', inspirations: '灵感站', content: '内容宇宙', hotspots: '热点雷达', customers: '教育 CRM', ecommerce: '电商实验室', english: '英语学习', health: '健康管理', income: '财富中心', reviews: '复盘室', decisions: '决策库', aiProfile: 'AI 档案' })[k] || k;
+  }
+  // 回收站条目的简短预览文字
+  function trashPreview(t) {
+    const d = t.data || {};
+    if (t.origEntity === 'income') return (num(d.amount) || '0') + ' 元' + (d.source ? ' · ' + d.source : '');
+    return d.title || d.topic || d.question || d.nickname || d.text || d.name || '一条记录';
+  }
+  // 软删除：把条目从原实体移到回收站（不直接物理删除）
+  function trashItem(entityKey, id, cat) {
+    const arr = App.state[entityKey];
+    if (!Array.isArray(arr)) return false;
+    const idx = arr.findIndex((x) => x.id === id);
+    if (idx < 0) return false;
+    const item = arr[idx];
+    arr.splice(idx, 1);
+    const now = today();
+    if (!Array.isArray(App.state.trash)) App.state.trash = [];
+    App.state.trash.unshift({
+      id: uid(),
+      origEntity: entityKey,
+      origId: item.id,
+      data: JSON.parse(JSON.stringify(item)),
+      cat: cat || catOf(entityKey),
+      deletedAt: now,
+      createdAt: item.createdAt || item.date || now,
+      updatedAt: item.updatedAt || now,
+    });
+    return true;
+  }
+  // 恢复单条（底层，不刷新界面）
+  function doRestore(trashId) {
+    const s = App.state;
+    const idx = (s.trash || []).findIndex((t) => t.id === trashId);
+    if (idx < 0) return false;
+    const t = s.trash[idx];
+    if (!Array.isArray(s[t.origEntity])) s[t.origEntity] = [];
+    t.data.updatedAt = Date.now();   // 打恢复时间戳，让其他设备据此判断"恢复晚于删除"而显示它
+    if (!s[t.origEntity].some((x) => x.id === t.origId)) s[t.origEntity].push(t.data);
+    s.trash.splice(idx, 1);
+    // 清除该条目墓碑，避免恢复后又被云端墓碑过滤掉
+    if (s.tombstones && s.tombstones[t.origEntity]) delete s.tombstones[t.origEntity][t.origId];
+    return true;
+  }
+  // 永久删除单条（底层，不刷新界面）；保留墓碑以防云端残留副本复活
+  function doPurge(trashId) {
+    const s = App.state;
+    const idx = (s.trash || []).findIndex((t) => t.id === trashId);
+    if (idx < 0) return false;
+    s.trash.splice(idx, 1);
+    return true;
+  }
+  function restoreFromTrash(id) { if (doRestore(id)) { save(); renderTrash(); toast('已恢复，回到了原来的位置 🌱'); } }
+  function purgeFromTrash(id) {
+    confirmModal('确定永久删除这条数据吗？永久删除后将无法恢复', () => {
+      if (doPurge(id)) { save(); renderTrash(); toast('已彻底移除，从回收站消失 🌿'); }
+    });
+  }
+  // 二次确认弹窗
+  function confirmModal(msg, onYes) {
+    showModal(`<h3>请确认</h3><p class="hint" style="margin:6px 0 16px;color:var(--ink);line-height:1.7">${esc(msg)}</p>
+      <div class="modal-actions">
+        <button class="btn ghost" data-act="close-modal">再想想</button>
+        <button class="btn" id="cfmYes">确定</button>
+      </div>`);
+    modalBox.querySelector('#cfmYes').onclick = () => { closeModal(); onYes(); };
+  }
+
+  function renderTrash() {
+    const s = App.state;
+    const trash = (Array.isArray(s.trash) ? s.trash : []).slice();
+    const td = today(), ys = addDays(-1);
+    const FLT = [
+      { id: 'all', name: '全部' }, { id: 'task', name: '任务' }, { id: 'content', name: '内容' },
+      { id: 'customer', name: '客户' }, { id: 'inspiration', name: '灵感' },
+      { id: 'income', name: '收入' }, { id: 'other', name: '其他' },
+    ];
+    const f = App.trashFilter || 'all';
+    let filtered = f === 'all' ? trash : trash.filter((t) => t.cat === f);
+    filtered.sort((a, b) => String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')));
+    const groupOf = (d) => d === td ? '今天' : d === ys ? '昨天' : '更早';
+    const groups = {};
+    filtered.forEach((t) => { const g = groupOf(t.deletedAt); (groups[g] = groups[g] || []).push(t); });
+    const order = ['今天', '昨天', '更早'];
+    const catName = { task: '任务', content: '内容', customer: '客户', inspiration: '灵感', income: '收入', other: '其他' };
+    const sel = App.trashSel || (App.trashSel = {});
+    const selIds = Object.keys(sel).filter((k) => sel[k]);
+    const selCount = selIds.length;
+
+    let html = `<div class="card"><h3>🗑️ 回收站 <span class="tag">软删除 · 随时可恢复</span></h3>
+      <div class="tiny muted" style="margin-bottom:10px">这里收集了所有被你删除的内容。别担心误删——它们都还在，随时可以放回原来的地方。</div>
+      <div class="tabs">${FLT.map((x) => `<button class="tab ${x.id === f ? 'active' : ''}" data-act="trash-filter" data-id="${x.id}">${x.name}</button>`).join('')}</div></div>`;
+
+    if (!trash.length) {
+      html += `<div class="empty"><span class="em">🌿</span>回收站是空的，很安心。以后删掉的东西都会先来这里，给你留一次反悔的机会。</div>`;
+      $('#view').innerHTML = html; setPage('回收站'); return;
+    }
+
+    // 批量操作条
+    html += `<div class="trash-bar">
+      <label class="trash-selall"><input type="checkbox" id="trashAll" ${selCount === filtered.length && filtered.length ? 'checked' : ''}> 全选</label>
+      <span class="muted tiny">已选 ${selCount} 项</span>
+      <div class="spacer"></div>
+      <button class="btn soft sm" data-act="trash-restore-sel" ${selCount ? '' : 'disabled'}>批量恢复</button>
+      <button class="btn ghost sm" data-act="trash-purge-sel" ${selCount ? '' : 'disabled'}>批量彻底移除</button>
+    </div>`;
+
+    if (!filtered.length) html += `<div class="empty"><span class="em">🗂️</span>这个分类下还没有被删除的内容。</div>`;
+
+    order.forEach((g) => {
+      const items = groups[g]; if (!items || !items.length) return;
+      html += `<div class="card"><h3>${g} <span class="tag">${items.length} 项</span></h3>`;
+      items.forEach((t) => {
+        const checked = sel[t.id] ? 'checked' : '';
+        html += `<div class="list-item" style="display:flex;align-items:flex-start;gap:10px">
+          <label class="trash-check"><input type="checkbox" data-act="trash-toggle" data-id="${t.id}" ${checked}></label>
+          <div class="li-main" style="flex:1;min-width:0">
+            <div class="li-top"><div class="li-title">${esc(trashPreview(t))}</div><span class="badge">${catName[t.cat] || '其他'}</span></div>
+            <div class="li-sub">原模块：${esc(moduleNameOf(t.origEntity))}　·　删除于 ${esc(t.deletedAt || '')}</div>
+          </div>
+          <div class="row-actions" style="flex-direction:column;gap:6px;flex-shrink:0">
+            <button class="mini green" data-act="trash-restore" data-id="${t.id}">恢复</button>
+            <button class="mini ghost" data-act="trash-purge" data-id="${t.id}">彻底移除</button>
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    });
+    $('#view').innerHTML = html; setPage('回收站');
+    const all = $('#trashAll');
+    if (all) all.onchange = () => { filtered.forEach((t) => { sel[t.id] = all.checked; }); App.trashSel = sel; renderTrash(); };
+  }
+
   /* ---------------- 渲染分发 ---------------- */
   function render() {
     const map = {
       today: renderToday, month: renderMonth, growth: renderGrowth, inspiration: renderInspiration,
       content: renderContent, hot: renderHot, crm: renderCRM, ecom: renderEcom, self: renderSelf,
       wealth: renderWealth, review: renderReview, decision: renderDecision, aiprofile: renderAIProfile,
+      trash: renderTrash,
     };
     (map[App.current] || renderToday)();
   }

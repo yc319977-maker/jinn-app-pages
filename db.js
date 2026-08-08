@@ -1,9 +1,17 @@
 /* ============================================================
- * db.js — 数据层（GitHub API 同步版）
+ * db.js — 数据层（GitHub API 同步版 · 数据安全护栏）
  * 双重存储：
  *   1) localStorage —— 永远可用，无需配置，关页面不丢数据
  *   2) GitHub 同步 —— 可选。设置里填「仓库名(owner/repo)」+「GitHub Token」后，手机/电脑自动同步同一份数据
  * 数据以整体 JSON 推送到 GitHub 私有仓库的 state.json。
+ *
+ * ⚠️ 数据安全最高原则（不可违反）：
+ *   - GitHub 云端 state.json = 唯一真实数据源；本地只是缓存 + 离线副本。
+ *   - 任何入口（新手机 / 清缓存 / PWA 独立分区 / 第一次打开）本地为空时，
+ *     必须先读取云端，绝不允许把空/残缺本地数据 PUT 上云覆盖云端。
+ *   - 上传前剥离保密字段（meta.syncToken 等），Token 只存本机，不进云端。
+ *   - 从云端拉回本地时，保留本机已有的同步凭据（云端不含这些），避免配置丢失。
+ *   - 拿不准谁更新时：宁可暂停同步，也绝不擅自删除/覆盖数据。
  * ============================================================ */
 window.DB = (function () {
   const ENTITIES = [
@@ -19,6 +27,7 @@ window.DB = (function () {
   let ghRepo = '';
   let ghToken = '';
   let ghSha = null;
+  let cloudCache = null;   // 最近一次成功拉取的云端快照（用于上传时合并）
   let pollTimer = null;
   let pushing = false;
 
@@ -47,6 +56,26 @@ window.DB = (function () {
     localStorage.setItem('sb_meta', JSON.stringify(state.meta || {}));
   }
 
+  /* 判断一份 state 里是否真的有用户数据（用于识别「空入口」） */
+  function localHasData(s) {
+    if (!s || typeof s !== 'object') return false;
+    for (const k of ENTITIES) { if (Array.isArray(s[k]) && s[k].length) return true; }
+    if (s.aiProfile && typeof s.aiProfile === 'object' && Object.keys(s.aiProfile).length) return true;
+    return false;
+  }
+
+  /* 把本机已有的同步凭据（云端不含）合并进云端数据，避免 pull 回来后丢失配置 */
+  function withLocalAuth(cloud) {
+    const out = JSON.parse(JSON.stringify(cloud || {}));
+    try {
+      const cur = JSON.parse(localStorage.getItem('sb_meta') || '{}');
+      out.meta = out.meta || {};
+      if (cur.syncUrl) out.meta.syncUrl = cur.syncUrl;
+      if (cur.syncToken) out.meta.syncToken = cur.syncToken;
+    } catch (_) {}
+    return out;
+  }
+
   /* ---------- GitHub 同步 ---------- */
   function friendlyErr(msg) {
     if (/Failed to fetch|NetworkError|Load failed|net::ERR_|timeout|超时/i.test(msg)) {
@@ -70,6 +99,16 @@ window.DB = (function () {
   function isValidRepo(s) { return /^[\w.-]+\/[\w.-]+$/.test((s || '').trim()); }
   function isValidToken(s) { return /^github_pat_/.test((s || '').trim()) || /^ghp_/.test((s || '').trim()); }
 
+  /* 上传前剥离保密字段：Token 等只留本机，绝不写入云端 */
+  function sanitize(state) {
+    const s = JSON.parse(JSON.stringify(state || {}));
+    if (s.meta) {
+      delete s.meta.syncToken;
+      delete s.meta.syncUrl;
+    }
+    return s;
+  }
+
   async function initSync(repo, token) {
     if (!repo || !token) { backend = 'local'; setStatus(false); return { ok: false, reason: '同步地址或 Token 为空' }; }
     repo = repo.trim(); token = token.trim();
@@ -84,8 +123,9 @@ window.DB = (function () {
       if (res.status === 200) {
         const j = await res.json();
         ghSha = j.sha;
+        cloudCache = JSON.parse(b64d(j.content));   // 连上即缓存一份云端快照
       } else if (res.status === 404) {
-        ghSha = null;
+        ghSha = null; cloudCache = null;
       } else if (res.status === 401 || res.status === 403) {
         backend = 'local'; setStatus(false);
         return { ok: false, reason: 'Token 无效或权限不足（请确认 Token 有这个私有仓库的 Contents 读写权限，且未过期）' };
@@ -94,6 +134,8 @@ window.DB = (function () {
       }
       setStatus(true); backend = 'sync';
       startAutoPull();
+      // 连上后立即拉一次云端并合并到本地，确保新入口第一时间拿到真实数据
+      pullAndMerge().catch(() => {});
       return { ok: true };
     } catch (e) {
       const msg = (e && e.message) ? e.message : String(e);
@@ -105,11 +147,13 @@ window.DB = (function () {
 
   async function loadSync() {
     const res = await fetch(`${GH_API}/repos/${ghRepo}/contents/state.json`, { headers: ghHeaders() });
-    if (res.status === 404) return null;
+    if (res.status === 404) { cloudCache = null; return null; }
     if (!res.ok) throw new Error('GitHub 返回 ' + res.status);
     const j = await res.json();
     ghSha = j.sha;
-    return JSON.parse(b64d(j.content));
+    const data = JSON.parse(b64d(j.content));
+    cloudCache = data;
+    return data;
   }
 
   async function saveSync(state) {
@@ -129,7 +173,8 @@ window.DB = (function () {
       }
       const body = {
         message: 'second-brain sync ' + new Date().toISOString(),
-        content: b64e(JSON.stringify(state, null, 2))
+        // 上传前剥离保密字段（Token 不进云端）
+        content: b64e(JSON.stringify(sanitize(state), null, 2))
       };
       if (sha) body.sha = sha;
       const put = await fetch(`${GH_API}/repos/${ghRepo}/contents/state.json`, {
@@ -151,7 +196,11 @@ window.DB = (function () {
     }
   }
 
-  /* ---------- 结构性合并（按 id 去重，cloud 优先） ---------- */
+  /* ---------- 结构性合并（按 id 去重） ----------
+   * 返回：以 local 为底 + 并入 cloud 独有条目；同 id 冲突时保留 local（用户刚编辑的优先）。
+   * 用于「上传」：既应用本地改动，又绝不丢失云端已有的条目。
+   * aiProfile / meta 由 cloud 优先（云端配置更权威）。
+   */
   function structuralMerge(local, cloud) {
     const merged = JSON.parse(JSON.stringify(local));
     ENTITIES.forEach((k) => {
@@ -160,19 +209,69 @@ window.DB = (function () {
       (local[k] || []).forEach((it) => { if (it && it.id) map.set(it.id, it); });
       (cloud[k] || []).forEach((it) => {
         if (!it || !it.id) return;
-        const ex = map.get(it.id);
-        if (!ex) map.set(it.id, it);
-        // 同 id 两边都有 → 保留 cloud（后写者赢的稳定语义）
+        if (!map.has(it.id)) map.set(it.id, it);  // 云端独有条目务必保留
+        // 同 id 冲突 → 保留 local（用户刚编辑的优先），不覆盖云端独有数据
       });
       merged[k] = Array.from(map.values());
     });
-    // aiProfile + meta：云端优先
     if (cloud.aiProfile && typeof cloud.aiProfile === 'object') merged.aiProfile = cloud.aiProfile;
     if (cloud.meta && typeof cloud.meta === 'object') merged.meta = Object.assign({}, merged.meta || {}, cloud.meta);
     return merged;
   }
 
-  /* ---------- 自动拉取 ---------- */
+  /* ---------- 安全上传：永远以云端为底合并，绝不拿空/残缺本地覆盖云端 ---------- */
+  async function pushSafe(state) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let cloud = null;
+      try { cloud = await loadSync(); } catch (_) { cloud = null; }
+      // 本地为空但云端有数据 → 不覆盖，直接把云端恢复到本地
+      if (cloud && !localHasData(state) && localHasData(cloud)) {
+        saveLocal(withLocalAuth(cloud)); setStatus(true); return;
+      }
+      const merged = cloud ? structuralMerge(state, cloud) : state;
+      merged.meta = merged.meta || {};
+      merged.meta.lastModified = Math.max((cloud && cloud.meta && cloud.meta.lastModified) || 0, state.meta.lastModified || 0);
+      saveLocal(merged);
+      try {
+        await saveSync(merged);
+        cloudCache = merged; setStatus(true); return;
+      } catch (e) {
+        if (/冲突/.test(e.message) && attempt === 0) { continue; }  // 并发冲突：重拉云端再合并一次
+        throw e;
+      }
+    }
+  }
+
+  /* 拉取云端并合并回本地（云端为唯一真实数据源） */
+  async function pullAndMerge() {
+    const cloud = await loadSync();
+    if (!cloud) return null;
+    const local = loadLocal();
+    // 本地为空（新入口/PWA 独立分区/清缓存）→ 一律用云端，不推送空数据
+    if (!localHasData(local)) {
+      const c = withLocalAuth(cloud);
+      saveLocal(c);
+      if (typeof window.__onSyncPull__ === 'function') { try { window.__onSyncPull__(c); } catch (_) {} }
+      return c;
+    }
+    const localTime = (local.meta && local.meta.lastModified) || 0;
+    const cloudTime = (cloud.meta && cloud.meta.lastModified) || 0;
+    // 云端更新或相等 → 云端优先（真实数据源）
+    if (cloudTime >= localTime) {
+      const c = withLocalAuth(cloud);
+      saveLocal(c);
+      if (typeof window.__onSyncPull__ === 'function') { try { window.__onSyncPull__(c); } catch (_) {} }
+      return c;
+    }
+    // 本地严格更新 → 合并（云端为底 + 本地改动）后写回
+    const merged = structuralMerge(local, cloud);
+    merged.meta = merged.meta || {};
+    merged.meta.lastModified = Math.max(cloudTime, localTime);
+    saveLocal(merged);
+    return merged;
+  }
+
+  /* ---------- 自动拉取（云端优先） ---------- */
   function startAutoPull() {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(async () => {
@@ -183,14 +282,15 @@ window.DB = (function () {
         const local = loadLocal();
         const localTime = (local.meta && local.meta.lastModified) || 0;
         const cloudTime = (cloud.meta && cloud.meta.lastModified) || 0;
+        // 云端更新 → 云端优先，替换本地并刷新界面
         if (cloudTime > localTime) {
-          saveLocal(cloud);
-          // 通知上层（app.js 可注册 window.__onSyncPull__ 来刷新 UI）
+          const c = withLocalAuth(cloud);
+          saveLocal(c);
           if (typeof window.__onSyncPull__ === 'function') {
-            try { window.__onSyncPull__(cloud); } catch (_) {}
+            try { window.__onSyncPull__(c); } catch (_) {}
           }
         }
-      } catch (_) { /* 静默失败 */ }
+      } catch (_) { /* 静默失败，下一轮再试 */ }
     }, 15000);
   }
   function stopAutoPull() {
@@ -199,53 +299,57 @@ window.DB = (function () {
 
   /* ---------- 对外 API ---------- */
   async function loadAll() {
-    if (backend === 'sync') {
-      try {
-        const local = loadLocal();
-        const cloud = await loadSync();
-        if (!cloud) {
+    if (backend !== 'sync') return loadLocal();
+    try {
+      const local = loadLocal();
+      const cloud = await loadSync();
+      // 云端为空：若本地有数据则用它初始化云端；否则原样返回本地
+      if (!cloud) {
+        if (localHasData(local)) {
           local.meta = local.meta || {};
-          local.meta.lastModified = Date.now();
+          local.meta.lastModified = local.meta.lastModified || Date.now();
           saveLocal(local);
           await saveSync(local);
-          return local;
         }
-        const localTime = (local.meta && local.meta.lastModified) || 0;
-        const cloudTime = (cloud.meta && cloud.meta.lastModified) || 0;
-        if (cloudTime > localTime && cloudTime > 0) {
-          // 云端更新 → 替换本地
-          saveLocal(cloud);
-          return cloud;
-        } else if (localTime > cloudTime && localTime > 0) {
-          // 本地更新 → 推上云端
-          await saveSync(local);
-          return local;
-        } else if (cloudTime === 0 && localTime === 0) {
-          // 两边都没有时间戳 → 结构性合并
-          const merged = structuralMerge(local, cloud);
-          merged.meta = merged.meta || {};
-          merged.meta.lastModified = Date.now();
-          saveLocal(merged);
-          await saveSync(merged);
-          return merged;
-        }
-        // 一致
         return local;
-      } catch (e) {
-        console.error('[第二大脑] loadSync 失败，使用本地：', e);
-        setStatus(false);
-        return loadLocal();
       }
+      // 本地为空 → 一律用云端（绝不把空数据推上去）
+      if (!localHasData(local)) {
+        const c = withLocalAuth(cloud);
+        saveLocal(c);
+        return c;
+      }
+      const localTime = (local.meta && local.meta.lastModified) || 0;
+      const cloudTime = (cloud.meta && cloud.meta.lastModified) || 0;
+      // 云端更新或相等 → 云端为唯一真实数据源
+      if (cloudTime >= localTime) {
+        const c = withLocalAuth(cloud);
+        saveLocal(c);
+        return c;
+      }
+      // 本地严格更新 → 合并（云端为底 + 本地改动）后上传
+      const merged = structuralMerge(local, cloud);
+      merged.meta = merged.meta || {};
+      merged.meta.lastModified = Math.max(cloudTime, localTime);
+      saveLocal(merged);
+      await saveSync(merged);
+      return merged;
+    } catch (e) {
+      console.error('[第二大脑] loadSync 失败，使用本地：', e);
+      setStatus(false);
+      return loadLocal();
     }
-    return loadLocal();
   }
   async function saveAll(state) {
     state.meta = state.meta || {};
     state.meta.lastModified = Date.now();
-    saveLocal(state);
-    if (backend === 'sync') {
-      try { await saveSync(state); }
-      catch (e) { console.error('[第二大脑] saveSync 失败：', e); setStatus(false); }
+    saveLocal(state);   // 先存本地（离线可用、立即刷新）
+    if (backend !== 'sync') return;
+    try {
+      await pushSafe(state);   // 云端为底合并上传，绝不覆盖
+    } catch (e) {
+      console.error('[第二大脑] saveSync 失败（数据已存本地，稍后自动重试）：', e);
+      setStatus(false);
     }
   }
 

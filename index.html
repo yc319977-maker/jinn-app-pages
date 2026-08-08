@@ -12,12 +12,14 @@
 </head>
 <body>
 <div class="app">
-  <!-- 侧边栏（始终常开，不折叠） -->
+  <!-- 侧边栏（手机端折叠为左侧抽屉，桌面端常开） -->
   <aside class="sidebar" id="sidebar"></aside>
+  <div class="nav-mask" id="navMask"></div>
 
   <!-- 主区 -->
   <div class="main">
     <header class="topbar">
+      <button class="icon-btn nav-toggle" id="navToggle" aria-label="打开菜单">☰</button>
       <div>
         <div class="title" id="pageTitle">JINN GROW 工作台</div>
         <div class="date" id="pageDate"></div>

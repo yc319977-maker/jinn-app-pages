@@ -38,6 +38,7 @@
     if (!s.aiProfile) s.aiProfile = {};
     if (!s.meta) s.meta = {};
     if (!Array.isArray(s.trash)) s.trash = [];
+    if (!Array.isArray(s.purged)) s.purged = [];
   }
 
   let saveTimer = null;
@@ -81,12 +82,15 @@
   function navCounts() {
     const s = App.state;
     const td = today();
+    // 内容宇宙气泡：未读热点（点进看过即标记 read） + 还没处理的选题（状态为「灵感」）
+    const unreadHot = s.hotspots.filter((h) => !h.collected && !h.read).length;
+    const freshIdea = s.content.filter((c) => c.status === '灵感').length;
     return {
       today: s.tasks.filter((t) => !t.canceled && t.date <= td && !t.done).length,
       month: 0,
       growth: 0,
       inspiration: 0,
-      content: s.hotspots.filter((h) => !h.collected).length,
+      content: unreadHot + freshIdea,
       crm: 0,
       ecom: 0,
       self: 0,
@@ -962,7 +966,7 @@
       case 'confirm-insp': confirmInsp(id); break;
       case 'del-insp': if (trashItem('inspirations', id, 'inspiration')) { save(); renderInspiration(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
-      case 'content-tab': contentView = id; renderContent(); break;
+      case 'content-tab': contentView = id; if (id === 'hot') { App.state.hotspots.forEach((h) => { h.read = true; }); } renderContent(); break;
       case 'filter-content': contentCol = id; contentView = 'col'; renderContent(); break;
       case 'add-content': editContent(null); break;
       case 'edit-content': editContent(id); break;
@@ -1160,15 +1164,19 @@
     t.data.updatedAt = Date.now();   // 打恢复时间戳，让其他设备据此判断"恢复晚于删除"而显示它
     if (!s[t.origEntity].some((x) => x.id === t.origId)) s[t.origEntity].push(t.data);
     s.trash.splice(idx, 1);
+    // 从已永久删除清单移除（避免日后再次软删除时又被 purge 压掉）
+    if (Array.isArray(s.purged)) s.purged = s.purged.filter((id) => id !== trashId);
     // 清除该条目墓碑，避免恢复后又被云端墓碑过滤掉
     if (s.tombstones && s.tombstones[t.origEntity]) delete s.tombstones[t.origEntity][t.origId];
     return true;
   }
-  // 永久删除单条（底层，不刷新界面）；保留墓碑以防云端残留副本复活
+  // 永久删除单条（底层，不刷新界面）
   function doPurge(trashId) {
     const s = App.state;
     const idx = (s.trash || []).findIndex((t) => t.id === trashId);
     if (idx < 0) return false;
+    if (!Array.isArray(s.purged)) s.purged = [];
+    s.purged.push(trashId);   // 记入"已永久删除"，阻止云端残留副本在自动拉取时被重新并入回收站
     s.trash.splice(idx, 1);
     return true;
   }
@@ -1289,6 +1297,8 @@
     onAct(el.dataset.act, el.dataset.id, el.dataset.type, el);
   });
   $('#settingsBtn').onclick = renderSettings;
+  $('#navToggle').onclick = () => document.body.classList.toggle('nav-open');
+  $('#navMask').onclick = () => document.body.classList.remove('nav-open');
 
   /* ---------------- 首次启动种子 ---------------- */
   function seed() {

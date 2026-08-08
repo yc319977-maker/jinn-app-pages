@@ -53,6 +53,9 @@ window.DB = (function () {
     try { out.trash = JSON.parse(localStorage.getItem('sb_trash') || '[]'); }
     catch (e) { out.trash = []; }
     if (!Array.isArray(out.trash)) out.trash = [];
+    try { out.purged = JSON.parse(localStorage.getItem('sb_purged') || '[]'); }
+    catch (e) { out.purged = []; }
+    if (!Array.isArray(out.purged)) out.purged = [];
     return out;
   }
   function saveLocal(state) {
@@ -61,6 +64,7 @@ window.DB = (function () {
     localStorage.setItem('sb_meta', JSON.stringify(state.meta || {}));
     localStorage.setItem('sb_tombstones', JSON.stringify(state.tombstones || {}));
     localStorage.setItem('sb_trash', JSON.stringify(Array.isArray(state.trash) ? state.trash : []));
+    localStorage.setItem('sb_purged', JSON.stringify(Array.isArray(state.purged) ? state.purged : []));
   }
 
   /* 判断一份 state 里是否真的有用户数据（用于识别「空入口」） */
@@ -147,8 +151,9 @@ window.DB = (function () {
    * - pruneTrash：若某条目已被恢复（origId 又出现在原实体数组里），自动从回收站移出，避免"既在回收站又在原处" */
   function mergeTrash(a, b) {
     const map = new Map();
-    (Array.isArray(a) ? a : []).forEach((t) => { if (t && t.id) map.set(t.id, t); });
-    (Array.isArray(b) ? b : []).forEach((t) => { if (t && t.id && !map.has(t.id)) map.set(t.id, t); });
+    const purged = new Set([...(Array.isArray(a.purged) ? a.purged : []), ...(Array.isArray(b.purged) ? b.purged : [])]);
+    (Array.isArray(a.trash) ? a.trash : []).forEach((t) => { if (t && t.id && !purged.has(t.id)) map.set(t.id, t); });
+    (Array.isArray(b.trash) ? b.trash : []).forEach((t) => { if (t && t.id && !purged.has(t.id)) map.set(t.id, t); });
     return Array.from(map.values());
   }
   function pruneTrash(state) {

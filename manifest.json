@@ -1,0 +1,20 @@
+{
+  "name": "第二大脑 · jinn 的成长工作台",
+  "short_name": "第二大脑",
+  "description": "服务个人创业者的长期成长工作操作系统",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF7F0",
+  "theme_color": "#E8A87C",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

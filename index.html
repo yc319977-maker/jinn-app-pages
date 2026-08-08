@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<!-- saved from url=(0081)file:///C:/Users/NM-DS/WorkBuddy%20AI/2026-08-07-17-10-23/second-brain/index.html -->
+<html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>同步测试 · 婧婧的第二大脑</title>
+<style>
+  :root{ --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --text:#e6e9ef; --muted:#9aa3b2; --accent:#7c5cff; --green:#22c55e; --yellow:#eab308; --red:#ef4444;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:760px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  h1{font-size:18px;margin:0}
+  .status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--yellow)}
+  .dot.green{background:var(--green)} .dot.yellow{background:var(--yellow)} .dot.red{background:var(--red)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:#0f1115;color:var(--text);font-size:14px}
+  button{margin-top:12px;padding:10px 14px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;cursor:pointer}
+  button.ghost{background:#262b36}
+  button:active{transform:translateY(1px)}
+  textarea{width:100%;height:90px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0f1115;color:var(--text);font-size:14px;resize:vertical}
+  .log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted);background:#0a0c10;border:1px solid var(--line);border-radius:8px;padding:10px;height:160px;overflow:auto;white-space:pre-wrap;margin-top:8px}
+  .item{border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px}
+  .item .t{font-size:14px} .item .m{font-size:11px;color:var(--muted);margin-top:4px}
+  .hide{display:none}
+  .hint{font-size:12px;color:var(--muted);line-height:1.6}
+  code{background:#0a0c10;padding:1px 5px;border-radius:4px;color:#cbd5e1}
+</style>
+</head>
+<body>
+<header>
+  <h1>同步测试页</h1>
+  <div class="status"><span id="dot" class="dot yellow"></span><span id="statustext">🟡 等待同步</span></div>
+</header>
+
+<!-- 设置面板：只在第一次出现 -->
+<div id="setup" class="card">
+  <div class="hint">这是独立测试页，不碰你真正的工作台。第一次填一次仓库名和 Token，以后全自动。Token 只存在本机浏览器，不会写进任何代码。</div>
+  <label>仓库名（格式 owner/repo）</label>
+  <input id="repo" placeholder="jyc19997-robot/jinn-sync-test-pages">
+  <label>GitHub Token（fine-grained，只给这个仓库 Contents 读写）</label>
+  <input id="token" type="password" placeholder="github_pat_xxxxxxxx">
+  <button onclick="saveSetup()">保存并开始</button>
+</div>
+
+<!-- 主界面 -->
+<div id="main" class="card hide">
+  <div class="hint">本机设备标记：<code id="devicetag"></code>。加一条，等 15 秒，去另一台设备看它是否自动出现。</div>
+  <label>标题</label>
+  <input id="title" placeholder="例如：电脑端测试 18:10">
+  <label>内容（可空）</label>
+  <textarea id="body" placeholder="随便写点什么"></textarea>
+  <button onclick="addItem()">+ 本地新增（自动后台同步）</button>
+  <button class="ghost" onclick="forcePull()">立即拉取一次</button>
+  <div id="list"></div>
+</div>
+
+<div class="card">
+  <div class="hint">运行日志（看这里判断卡在哪）</div>
+  <div id="log" class="log">[16:23:12] 请先填写仓库名和 Token
+</div>
+</div>
+
+<script>
+const LS_CFG='sb_sync_cfg', LS_ITEMS='sb_sync_items';
+let cfg = JSON.parse(localStorage.getItem(LS_CFG)||'null');
+let items = JSON.parse(localStorage.getItem(LS_ITEMS)||'[]');
+let pushing=false, shaCache=null, pushTimer=null;
+
+function setStatus(kind, label){
+  const d=document.getElementById('dot');
+  d.className='dot '+(kind==='synced'?'green':kind==='pending'?'yellow':'red');
+  document.getElementById('statustext').textContent = label || (kind==='synced'?'🟢 已同步':kind==='pending'?'🟡 同步中':'🔴 异常');
+}
+function log(m){
+  const el=document.getElementById('log');
+  el.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`;
+  el.scrollTop=el.scrollHeight;
+}
+function b64e(s){ return btoa(unescape(encodeURIComponent(s))); }
+function b64d(s){ return decodeURIComponent(escape(atob(s))); }
+function getDevice(){
+  let d=localStorage.getItem('sb_device');
+  if(!d){ d='设备-'+Math.random().toString(36).slice(2,6); localStorage.setItem('sb_device',d); }
+  return d;
+}
+
+async function ghGet(){
+  const url=`https://api.github.com/repos/${cfg.repo}/contents/state.json`;
+  const r=await fetch(url,{headers:{Authorization:`Bearer ${cfg.token}`,Accept:'application/vnd.github+json'}});
+  if(r.status===200){ const j=await r.json(); return {items: JSON.parse(b64d(j.content)), sha:j.sha}; }
+  if(r.status===404){ return {items:[], sha:null}; }
+  if(r.status===401||r.status===403) throw new Error('AUTH');
+  throw new Error('HTTP '+r.status);
+}
+async function ghPut(arr, sha){
+  const url=`https://api.github.com/repos/${cfg.repo}/contents/state.json`;
+  const body={ message:'sync '+new Date().toISOString(), content: b64e(JSON.stringify(arr,null,2)) };
+  if(sha) body.sha=sha;
+  const r=await fetch(url,{method:'PUT',headers:{Authorization:`Bearer ${cfg.token}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.status===200||r.status===201){ const j=await r.json(); return j.content.sha; }
+  if(r.status===401||r.status===403) throw new Error('AUTH');
+  const t=await r.text(); throw new Error('HTTP '+r.status+' '+t.slice(0,140));
+}
+function merge(local, cloud){
+  const map=new Map();
+  local.forEach(it=>map.set(it.id, it));
+  cloud.forEach(it=>{ const ex=map.get(it.id); if(!ex || it.updated_at > ex.updated_at) map.set(it.id, it); });
+  return Array.from(map.values()).sort((a,b)=>b.updated_at - a.updated_at);
+}
+
+async function pull(){
+  if(!cfg) return;
+  try{
+    const {items:cloud, sha}=await ghGet();
+    shaCache=sha;
+    items=merge(items, cloud);
+    localStorage.setItem(LS_ITEMS, JSON.stringify(items));
+    setStatus('synced');
+    render();
+    log('pull 成功，云端 '+cloud.length+' 条 → 本地 '+items.length+' 条');
+  }catch(e){
+    if(e.message==='AUTH'){ setStatus('error','🔴 异常（Token 无效）'); log('鉴权失败：Token 无效或权限不足'); }
+    else { setStatus('pending','🟡 等待同步'); log('pull 失败：'+e.message+'（网络恢复后自动重试）'); }
+  }
+}
+function schedulePush(){
+  setStatus('pending','🟡 同步中');
+  if(pushTimer) clearTimeout(pushTimer);
+  pushTimer=setTimeout(doPush, 1500);
+}
+async function doPush(){
+  if(!cfg || pushing) return;
+  pushing=true;
+  try{
+    const {sha}=await ghGet();
+    const newSha=await ghPut(items, sha);
+    shaCache=newSha;
+    setStatus('synced');
+    log('push 成功，本地 '+items.length+' 条');
+  }catch(e){
+    if(e.message==='AUTH'){ setStatus('error','🔴 异常（Token 无效）'); log('鉴权失败'); }
+    else { setStatus('pending','🟡 等待同步'); log('push 失败：'+e.message+'（8 秒后自动重试）'); setTimeout(doPush, 8000); }
+  }finally{ pushing=false; }
+}
+function addItem(){
+  const title=document.getElementById('title').value.trim();
+  const body=document.getElementById('body').value.trim();
+  if(!title){ alert('标题不能为空'); return; }
+  const now=Date.now();
+  items.unshift({id:'i'+now+'_'+Math.random().toString(36).slice(2,7), title, body, device:getDevice(), updated_at:now});
+  localStorage.setItem(LS_ITEMS, JSON.stringify(items));
+  document.getElementById('title').value='';
+  document.getElementById('body').value='';
+  render();
+  schedulePush();
+  log('本地新增 1 条（'+getDevice()+'）');
+}
+function render(){
+  const el=document.getElementById('list');
+  el.innerHTML = items.map(it=>`<div class="item"><div class="t">${escapeHtml(it.title)}</div><div class="m">${escapeHtml(it.device||'?')} · ${new Date(it.updated_at).toLocaleString()}</div></div>`).join('');
+}
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function saveSetup(){
+  const repo=document.getElementById('repo').value.trim();
+  const token=document.getElementById('token').value.trim();
+  if(!repo.includes('/')||!token){ alert('请填完整'); return; }
+  cfg={repo, token};
+  localStorage.setItem(LS_CFG, JSON.stringify(cfg));
+  enter();
+}
+function enter(){
+  document.getElementById('setup').classList.add('hide');
+  document.getElementById('main').classList.remove('hide');
+  document.getElementById('devicetag').textContent=getDevice();
+  render();
+  setStatus('pending','🟡 同步中');
+  pull();
+}
+function forcePull(){ log('手动拉取'); pull(); }
+
+// 自动机制
+window.addEventListener('online', ()=>{ log('网络恢复'); pull(); });
+window.addEventListener('offline', ()=>{ setStatus('pending','🟡 等待同步'); log('网络断开，仅存本地'); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pull(); });
+setInterval(pull, 15000);
+
+if(cfg) enter();
+else { setStatus('pending','🟡 等待同步'); log('请先填写仓库名和 Token'); }
+</script>
+
+
+</body></html>

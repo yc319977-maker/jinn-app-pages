@@ -48,12 +48,15 @@ window.DB = (function () {
     catch (e) { out.aiProfile = {}; }
     try { out.meta = JSON.parse(localStorage.getItem('sb_meta') || '{}'); }
     catch (e) { out.meta = {}; }
+    try { out.tombstones = JSON.parse(localStorage.getItem('sb_tombstones') || '{}'); }
+    catch (e) { out.tombstones = {}; }
     return out;
   }
   function saveLocal(state) {
     ENTITIES.forEach((k) => localStorage.setItem('sb_' + k, JSON.stringify(state[k] || [])));
     localStorage.setItem('sb_aiProfile', JSON.stringify(state.aiProfile || {}));
     localStorage.setItem('sb_meta', JSON.stringify(state.meta || {}));
+    localStorage.setItem('sb_tombstones', JSON.stringify(state.tombstones || {}));
   }
 
   /* 判断一份 state 里是否真的有用户数据（用于识别「空入口」） */
@@ -62,6 +65,75 @@ window.DB = (function () {
     for (const k of ENTITIES) { if (Array.isArray(s[k]) && s[k].length) return true; }
     if (s.aiProfile && typeof s.aiProfile === 'object' && Object.keys(s.aiProfile).length) return true;
     return false;
+  }
+
+  /* ---------- 墓碑（tombstones）：记录已删除条目，防止云端死灰复燃 ----------
+   * 每次 save() 之前比对"上次保存的"和"这次要保存的"，找出被删掉的 id 记入墓碑；
+   * 合并上传时剔除云端对应条目；合并下载时同理用墓碑过滤；
+   * 剪枝：云端已不存在的墓碑自动清除，避免墓碑无限增长。 */
+  function hasTombstones(s) {
+    if (!s || !s.tombstones || typeof s.tombstones !== 'object') return false;
+    for (const k of ENTITIES) {
+      const t = s.tombstones[k];
+      if (t && typeof t === 'object' && Object.keys(t).length) return true;
+    }
+    return false;
+  }
+  function hasMeaningfulState(s) {
+    return localHasData(s) || hasTombstones(s);
+  }
+  function mergeTombstones(a, b) {
+    const out = {};
+    ENTITIES.forEach((k) => {
+      const ma = (a && a[k] && typeof a[k] === 'object') ? a[k] : {};
+      const mb = (b && b[k] && typeof b[k] === 'object') ? b[k] : {};
+      const m = Object.assign({}, ma, mb);
+      Object.keys(m).forEach((id) => {
+        m[id] = Math.max(Number(ma[id]) || 0, Number(mb[id]) || 0) || Date.now();
+      });
+      if (Object.keys(m).length) out[k] = m;
+    });
+    return out;
+  }
+  function detectDeletions(prev, next) {
+    const out = {};
+    if (!prev || !next) return out;
+    ENTITIES.forEach((k) => {
+      const pa = Array.isArray(prev[k]) ? prev[k] : [];
+      const na = Array.isArray(next[k]) ? next[k] : [];
+      const nextIds = new Set(na.map((it) => it && it.id).filter(Boolean));
+      const tomb = {};
+      pa.forEach((it) => {
+        if (it && it.id && !nextIds.has(it.id)) tomb[it.id] = Date.now();
+      });
+      if (Object.keys(tomb).length) out[k] = tomb;
+    });
+    return out;
+  }
+  function applyTombstoneFilter(state) {
+    if (!state || !state.tombstones || typeof state.tombstones !== 'object') return;
+    ENTITIES.forEach((k) => {
+      const tomb = state.tombstones[k];
+      if (!tomb || typeof tomb !== 'object' || !Object.keys(tomb).length) return;
+      if (!Array.isArray(state[k])) return;
+      state[k] = state[k].filter((it) => !(it && it.id && tomb[it.id]));
+    });
+  }
+  function pruneTombstones(merged, cloud) {
+    if (!merged || !merged.tombstones || typeof merged.tombstones !== 'object') return;
+    ENTITIES.forEach((k) => {
+      const t = merged.tombstones[k];
+      if (!t || typeof t !== 'object') return;
+      const cloudIds = new Set();
+      if (cloud && Array.isArray(cloud[k])) {
+        cloud[k].forEach((it) => { if (it && it.id) cloudIds.add(it.id); });
+      }
+      Object.keys(t).forEach((id) => { if (!cloudIds.has(id)) delete t[id]; });
+      if (!Object.keys(t).length) delete merged.tombstones[k];
+    });
+    if (merged.tombstones && typeof merged.tombstones === 'object' && !Object.keys(merged.tombstones).length) {
+      delete merged.tombstones;
+    }
   }
 
   /* 把本机已有的同步凭据（云端不含）合并进云端数据，避免 pull 回来后丢失配置 */
@@ -203,19 +275,25 @@ window.DB = (function () {
    */
   function structuralMerge(local, cloud) {
     const merged = JSON.parse(JSON.stringify(local));
+    // 合并墓碑（去重 + 取较大时间戳），并用墓碑过滤云端条目（被删的绝不复活）
+    merged.tombstones = mergeTombstones(local.tombstones || {}, cloud.tombstones || {});
+    const tombstones = merged.tombstones || {};
     ENTITIES.forEach((k) => {
       if (!Array.isArray(local[k]) || !Array.isArray(cloud[k])) return;
       const map = new Map();
+      const tomb = (tombstones[k] && typeof tombstones[k] === 'object') ? tombstones[k] : {};
       (local[k] || []).forEach((it) => { if (it && it.id) map.set(it.id, it); });
       (cloud[k] || []).forEach((it) => {
         if (!it || !it.id) return;
-        if (!map.has(it.id)) map.set(it.id, it);  // 云端独有条目务必保留
-        // 同 id 冲突 → 保留 local（用户刚编辑的优先），不覆盖云端独有数据
+        if (tomb[it.id]) return;   // 已删除的：绝不复活
+        if (!map.has(it.id)) map.set(it.id, it);
+        // 同 id 冲突 → 保留 local（用户刚编辑的优先）
       });
       merged[k] = Array.from(map.values());
     });
     if (cloud.aiProfile && typeof cloud.aiProfile === 'object') merged.aiProfile = cloud.aiProfile;
     if (cloud.meta && typeof cloud.meta === 'object') merged.meta = Object.assign({}, merged.meta || {}, cloud.meta);
+    pruneTombstones(merged, cloud);
     return merged;
   }
 
@@ -224,8 +302,8 @@ window.DB = (function () {
     for (let attempt = 0; attempt < 2; attempt++) {
       let cloud = null;
       try { cloud = await loadSync(); } catch (_) { cloud = null; }
-      // 本地为空但云端有数据 → 不覆盖，直接把云端恢复到本地
-      if (cloud && !localHasData(state) && localHasData(cloud)) {
+      // 本地既无数据也无墓碑（纯空入口）且云端有数据 → 不覆盖，直接把云端恢复到本地
+      if (cloud && !hasMeaningfulState(state) && localHasData(cloud)) {
         saveLocal(withLocalAuth(cloud)); setStatus(true); return;
       }
       const merged = cloud ? structuralMerge(state, cloud) : state;
@@ -236,7 +314,7 @@ window.DB = (function () {
         await saveSync(merged);
         cloudCache = merged; setStatus(true); return;
       } catch (e) {
-        if (/冲突/.test(e.message) && attempt === 0) { continue; }  // 并发冲突：重拉云端再合并一次
+        if (/冲突/.test(e.message) && attempt === 0) { continue; }
         throw e;
       }
     }
@@ -250,6 +328,9 @@ window.DB = (function () {
     // 本地为空（新入口/PWA 独立分区/清缓存）→ 一律用云端，不推送空数据
     if (!localHasData(local)) {
       const c = withLocalAuth(cloud);
+      c.tombstones = mergeTombstones(local.tombstones || {}, cloud.tombstones || {});
+      applyTombstoneFilter(c);
+      pruneTombstones(c, cloud);
       saveLocal(c);
       if (typeof window.__onSyncPull__ === 'function') { try { window.__onSyncPull__(c); } catch (_) {} }
       return c;
@@ -259,6 +340,9 @@ window.DB = (function () {
     // 云端更新或相等 → 云端优先（真实数据源）
     if (cloudTime >= localTime) {
       const c = withLocalAuth(cloud);
+      c.tombstones = mergeTombstones(local.tombstones || {}, cloud.tombstones || {});
+      applyTombstoneFilter(c);
+      pruneTombstones(c, cloud);
       saveLocal(c);
       if (typeof window.__onSyncPull__ === 'function') { try { window.__onSyncPull__(c); } catch (_) {} }
       return c;
@@ -285,6 +369,10 @@ window.DB = (function () {
         // 云端更新 → 云端优先，替换本地并刷新界面
         if (cloudTime > localTime) {
           const c = withLocalAuth(cloud);
+          // 合入本地墓碑并按墓碑过滤云端条目，避免被删了的死灰复燃
+          c.tombstones = mergeTombstones(local.tombstones || {}, cloud.tombstones || {});
+          applyTombstoneFilter(c);
+          pruneTombstones(c, cloud);
           saveLocal(c);
           if (typeof window.__onSyncPull__ === 'function') {
             try { window.__onSyncPull__(c); } catch (_) {}
@@ -303,9 +391,9 @@ window.DB = (function () {
     try {
       const local = loadLocal();
       const cloud = await loadSync();
-      // 云端为空：若本地有数据则用它初始化云端；否则原样返回本地
+      // 云端为空：若本地有有意义数据（items 或 tombstones）则用它初始化云端；否则原样返回本地
       if (!cloud) {
-        if (localHasData(local)) {
+        if (hasMeaningfulState(local)) {
           local.meta = local.meta || {};
           local.meta.lastModified = local.meta.lastModified || Date.now();
           saveLocal(local);
@@ -313,9 +401,12 @@ window.DB = (function () {
         }
         return local;
       }
-      // 本地为空 → 一律用云端（绝不把空数据推上去）
-      if (!localHasData(local)) {
+      // 本地无任何有意义数据 → 一律用云端（绝不把空数据推上去）
+      if (!hasMeaningfulState(local)) {
         const c = withLocalAuth(cloud);
+        c.tombstones = mergeTombstones(local.tombstones || {}, cloud.tombstones || {});
+        applyTombstoneFilter(c);
+        pruneTombstones(c, cloud);
         saveLocal(c);
         return c;
       }
@@ -324,6 +415,9 @@ window.DB = (function () {
       // 云端更新或相等 → 云端为唯一真实数据源
       if (cloudTime >= localTime) {
         const c = withLocalAuth(cloud);
+        c.tombstones = mergeTombstones(local.tombstones || {}, cloud.tombstones || {});
+        applyTombstoneFilter(c);
+        pruneTombstones(c, cloud);
         saveLocal(c);
         return c;
       }
@@ -343,6 +437,15 @@ window.DB = (function () {
   async function saveAll(state) {
     state.meta = state.meta || {};
     state.meta.lastModified = Date.now();
+    // 检查"用户刚才删除了哪些条目"，记入墓碑（防止云端死灰复燃）
+    const prev = loadLocal();
+    const dels = detectDeletions(prev, state);
+    state.tombstones = mergeTombstones(prev.tombstones || {}, state.tombstones || {});
+    ENTITIES.forEach((k) => {
+      if (dels[k]) {
+        state.tombstones[k] = Object.assign({}, state.tombstones[k] || {}, dels[k]);
+      }
+    });
     saveLocal(state);   // 先存本地（离线可用、立即刷新）
     if (backend !== 'sync') return;
     try {

@@ -57,13 +57,9 @@
     { id: 'growth', name: '成长地图', short: '成长', icon: '🗺️' },
     { id: 'inspiration', name: '灵感站', short: '灵感', icon: '💡' },
     { id: 'content', name: '婧婧内容宇宙', short: '内容', icon: '🎬' },
-    { id: 'hot', name: '热点雷达', short: '热点', icon: '📡' },
     { id: 'crm', name: '教育 CRM', short: '教育', icon: '🌿' },
     { id: 'ecom', name: '电商实验室', short: '电商', icon: '🛒' },
     { id: 'self', name: '个人成长', short: '自我', icon: '🌟' },
-    { id: 'wealth', name: '财富中心', short: '财富', icon: '💰' },
-    { id: 'review', name: '复盘室', short: '复盘', icon: '🪞' },
-    { id: 'decision', name: '决策库', short: '决策', icon: '🧭' },
     { id: 'aiprofile', name: 'AI 档案', short: 'AI', icon: '🤖' },
     { id: 'trash', name: '回收站', short: '回收站', icon: '🗑️' },
   ];
@@ -81,23 +77,19 @@
       }).join('');
   }
 
-  // 各模块顶部数字气泡：今天未完成/未处理/未归档
+  // 各模块顶部数字气泡：只提醒「待办 / 新热点 / 回收站」三类，避免制造压力
   function navCounts() {
     const s = App.state;
     const td = today();
     return {
       today: s.tasks.filter((t) => !t.canceled && t.date <= td && !t.done).length,
       month: 0,
-      growth: s.growth.filter((g) => g.type !== 'action').length,
-      inspiration: s.inspirations.filter((i) => !i.confirmed).length,
-      content: s.content.filter((c) => c.status !== '已发布' && c.status !== '完结').length,
-      hot: s.hotspots.filter((h) => !h.collected).length,
-      crm: s.customers.filter((c) => c.stage !== '成交' && c.stage !== '长期培育').length,
-      ecom: s.ecommerce.length,
-      self: s.english.length + s.health.length,
-      wealth: s.income.length,
-      review: s.reviews.length,
-      decision: s.decisions.length,
+      growth: 0,
+      inspiration: 0,
+      content: s.hotspots.filter((h) => !h.collected).length,
+      crm: 0,
+      ecom: 0,
+      self: 0,
       aiprofile: 0,
       trash: (s.trash || []).length,
     };
@@ -491,25 +483,50 @@
   ];
   const CSTATUS = ['灵感', '待制作', '拍摄中', '剪辑中', '已发布', '复盘'];
   let contentCol = 'thailand';
+  let contentView = 'col'; // 'col' 选题栏目 / 'hot' 热点雷达
   function renderContent() {
     const s = App.state;
-    const tabs = COLS.map((c) => `<button class="tab ${c.id === contentCol ? 'active' : ''}" data-act="filter-content" data-id="${c.id}">${c.name}</button>`).join('');
-    let html = `<div class="card"><h3>🎬 婧婧内容宇宙 <span class="tag">${COLS.find((c) => c.id === contentCol).name}</span></h3>
-      <div class="tabs">${tabs}</div>
-      <button class="btn sm" data-act="add-content">+ 新建选题</button></div>`;
-    const list = s.content.filter((x) => x.col === contentCol).slice().reverse();
-    if (!list.length) html += `<div class="empty"><span class="em">🎥</span>这个栏目还没有选题，记录第一个灵感吧。</div>`;
-    list.forEach((x) => {
-      const st = x.status || '灵感';
-      const stCls = { '灵感': 's1', '待制作': 's1', '拍摄中': 's3', '剪辑中': 's3', '已发布': 's2', '复盘': 's4' }[st] || 's1';
-      html += `<div class="list-item"><div class="li-top">
-        <div class="li-title">${esc(x.title)}</div><span class="badge ${stCls}">${st}</span></div>
-        <div class="li-sub">${x.source ? '来源：' + esc(x.source) + '\n' : ''}${x.idea ? '想法：' + esc(x.idea) + '\n' : ''}
-        ${x.publishTime ? '发布：' + esc(x.publishTime) + '　' : ''}${x.dataReview ? '复盘：' + esc(x.dataReview) : ''}</div>
-        <div class="row-actions" style="margin-top:8px">
-          <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
-          <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
-    });
+    const colTabs = COLS.map((c) => `<button class="tab ${contentView === 'col' && c.id === contentCol ? 'active' : ''}" data-act="filter-content" data-id="${c.id}">${c.name}</button>`).join('');
+    const topTabs = `<button class="tab ${contentView === 'col' ? 'active' : ''}" data-act="content-tab" data-id="col">🎬 选题栏目</button>
+      <button class="tab ${contentView === 'hot' ? 'active' : ''}" data-act="content-tab" data-id="hot">📡 热点雷达</button>`;
+
+    let html = `<div class="card"><h3>🎬 婧婧内容宇宙 <span class="tag">${contentView === 'hot' ? '热点雷达' : COLS.find((c) => c.id === contentCol).name}</span></h3>
+      <div class="tabs">${topTabs}</div>
+      ${contentView === 'col' ? `<div class="tabs">${colTabs}</div>
+      <button class="btn sm" data-act="add-content">+ 新建选题</button>` : `<div class="tiny muted" style="margin-bottom:10px">提示：连接数据源后可每日自动整理。当前支持手动收录 + AI 方向建议（本地启发式）。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" data-act="gen-hot">✨ AI 给方向建议</button>
+        <button class="btn soft sm" data-act="add-hot">+ 收录热点</button>
+      </div>`}</div>`;
+
+    if (contentView === 'col') {
+      const list = s.content.filter((x) => x.col === contentCol).slice().reverse();
+      if (!list.length) html += `<div class="empty"><span class="em">🎥</span>这个栏目还没有选题，记录第一个灵感吧。</div>`;
+      list.forEach((x) => {
+        const st = x.status || '灵感';
+        const stCls = { '灵感': 's1', '待制作': 's1', '拍摄中': 's3', '剪辑中': 's3', '已发布': 's2', '复盘': 's4' }[st] || 's1';
+        html += `<div class="list-item"><div class="li-top">
+          <div class="li-title">${esc(x.title)}</div><span class="badge ${stCls}">${st}</span></div>
+          <div class="li-sub">${x.source ? '来源：' + esc(x.source) + '\n' : ''}${x.idea ? '想法：' + esc(x.idea) + '\n' : ''}
+          ${x.publishTime ? '发布：' + esc(x.publishTime) + '　' : ''}${x.dataReview ? '复盘：' + esc(x.dataReview) : ''}</div>
+          <div class="row-actions" style="margin-top:8px">
+            <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
+            <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
+      });
+    } else {
+      const list = s.hotspots.slice().reverse();
+      if (!list.length) html += `<div class="empty"><span class="em">📡</span>还没有热点。点「AI 给方向建议」试试。</div>`;
+      list.forEach((h) => {
+        const colName = (COLS.find((c) => c.id === h.col) || {}).name || h.col;
+        html += `<div class="list-item"><div class="li-top">
+          <div class="li-title">${esc(h.topic)}</div>${h.collected ? '<span class="badge s2">已收藏</span>' : ''}</div>
+          <div class="li-sub">${h.source ? '来源：' + esc(h.source) + '　' : ''}${h.heat ? '热度：' + esc(h.heat) + '\n' : ''}
+          ${h.why ? '为什么适合你：' + esc(h.why) + '\n' : ''}<b>建议栏目：</b>${esc(colName)}　<b>推荐选题：</b>${esc(h.suggestedTopic || '')}</div>
+          <div class="row-actions" style="margin-top:8px">
+            ${h.collected ? '' : `<button class="mini green" data-act="collect-hot" data-id="${h.id}">收藏入选题库</button>`}
+            <button class="mini ghost" data-act="del-hot" data-id="${h.id}">删除</button></div></div>`;
+      });
+    }
     $('#view').innerHTML = html;
     setPage('婧婧内容宇宙');
   }
@@ -527,31 +544,8 @@
   }
 
   /* ============================================================
-   *  热点雷达
+   *  热点雷达（已并入内容宇宙顶部 tab，下方函数仍保留供 case 调用）
    * ============================================================ */
-  function renderHot() {
-    const s = App.state;
-    let html = `<div class="card"><h3>📡 热点雷达 <span class="tag">AI 整理 · 收藏入选题库</span></h3>
-      <div class="tiny muted" style="margin-bottom:10px">提示：连接数据源后可每日自动整理。当前支持手动收录 + AI 方向建议（本地启发式）。</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" data-act="gen-hot">✨ AI 给方向建议</button>
-        <button class="btn soft sm" data-act="add-hot">+ 收录热点</button>
-      </div></div>`;
-    const list = s.hotspots.slice().reverse();
-    if (!list.length) html += `<div class="empty"><span class="em">📡</span>还没有热点。点「AI 给方向建议」试试。</div>`;
-    list.forEach((h) => {
-      const colName = (COLS.find((c) => c.id === h.col) || {}).name || h.col;
-      html += `<div class="list-item"><div class="li-top">
-        <div class="li-title">${esc(h.topic)}</div>${h.collected ? '<span class="badge s2">已收藏</span>' : ''}</div>
-        <div class="li-sub">${h.source ? '来源：' + esc(h.source) + '　' : ''}${h.heat ? '热度：' + esc(h.heat) + '\n' : ''}
-        ${h.why ? '为什么适合你：' + esc(h.why) + '\n' : ''}<b>建议栏目：</b>${esc(colName)}　<b>推荐选题：</b>${esc(h.suggestedTopic || '')}</div>
-        <div class="row-actions" style="margin-top:8px">
-          ${h.collected ? '' : `<button class="mini green" data-act="collect-hot" data-id="${h.id}">收藏入选题库</button>`}
-          <button class="mini ghost" data-act="del-hot" data-id="${h.id}">删除</button></div></div>`;
-    });
-    $('#view').innerHTML = html;
-    setPage('热点雷达');
-  }
   function genHot() {
     const s = App.state;
     const seeds = [
@@ -564,12 +558,12 @@
       const sg = suggestHot(sd.topic);
       s.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false, suggestedTopic: sd.topic + '：' + sg.dir }, sd, { col: sd.col || sg.col }));
     });
-    save(); renderHot(); toast('已生成今日热点建议 📡');
+    save(); renderContent(); toast('已生成今日热点建议 📡');
   }
   function collectHot(id) {
     const h = App.state.hotspots.find((x) => x.id === id); if (!h) return;
     App.state.content.push({ id: uid(), col: h.col, title: h.suggestedTopic || h.topic, status: '灵感', idea: h.why, source: h.source, createdAt: today() });
-    h.collected = true; save(); renderHot(); toast('已收藏到内容宇宙 🎬');
+    h.collected = true; save(); renderContent(); toast('已收藏到内容宇宙 🎬');
   }
 
   /* ============================================================
@@ -660,9 +654,30 @@
   }
 
   /* ============================================================
-   *  个人成长（英语 + 健康）
+   *  个人成长（含英语/健康/财富/复盘/决策 四个子页）
    * ============================================================ */
+  let selfView = 'grow'; // grow | wealth | review | decision
   function renderSelf() {
+    const tabs = `<div class="tabs">
+      <button class="tab ${selfView==='grow'?'active':''}" data-act="self-tab" data-id="grow">🌟 打卡</button>
+      <button class="tab ${selfView==='wealth'?'active':''}" data-act="self-tab" data-id="wealth">💰 财富</button>
+      <button class="tab ${selfView==='review'?'active':''}" data-act="self-tab" data-id="review">🪞 复盘</button>
+      <button class="tab ${selfView==='decision'?'active':''}" data-act="self-tab" data-id="decision">🧭 决策</button>
+    </div>`;
+    const inner = ({
+      grow: renderSelfGrow,
+      wealth: renderSelfWealth,
+      review: renderSelfReview,
+      decision: renderSelfDecision,
+    }[selfView] || renderSelfGrow)();
+    $('#view').innerHTML = tabs + inner;
+    setPage('个人成长');
+    if (selfView === 'grow') {
+      const en = $('#qa-en'); if (en) en.onkeydown = (e) => { if (e.key === 'Enter') addEnglish(); };
+    }
+  }
+
+  function renderSelfGrow() {
     const s = App.state;
     const enTotal = s.english.reduce((a, e) => a + (Number(e.minutes) || 0), 0);
     const enList = s.english.slice().reverse().slice(0, 8);
@@ -681,7 +696,6 @@
         <span class="badge">${esc(e.date)}</span></div>${e.note ? `<div class="li-sub">${esc(e.note)}</div>` : ''}
         <div class="row-actions" style="margin-top:6px"><button class="mini ghost" data-act="del-english" data-id="${e.id}">删除</button></div></div>`;
     });
-
     html += `<div class="card"><h3>💪 健康管理 <span class="tag">睡眠 · 运动 · 状态</span></h3>
       <button class="btn sm" data-act="add-health">+ 记录今天</button></div>`;
     heList.forEach((h) => {
@@ -690,9 +704,7 @@
         <div class="li-sub">${h.exercise ? '运动：' + esc(h.exercise) + '\n' : ''}${h.note ? esc(h.note) : ''}</div>
         <div class="row-actions" style="margin-top:6px"><button class="mini ghost" data-act="del-health" data-id="${h.id}">删除</button></div></div>`;
     });
-    $('#view').innerHTML = html;
-    setPage('个人成长');
-    const en = $('#qa-en'); if (en) en.onkeydown = (e) => { if (e.key === 'Enter') addEnglish(); };
+    return html;
   }
   function addEnglish() {
     const el = $('#qa-en'); const v = el ? el.value.trim() : '';
@@ -713,10 +725,7 @@
     ], null, (fd) => { App.state.health.push(Object.assign({ id: uid() }, fd)); save(); renderSelf(); toast('已记录 💪'); });
   }
 
-  /* ============================================================
-   *  财富中心
-   * ============================================================ */
-  function renderWealth() {
+  function renderSelfWealth() {
     const s = App.state;
     const total = s.income.reduce((a, i) => a + (Number(i.amount) || 0), 0);
     const byMonth = {};
@@ -734,26 +743,19 @@
         <span class="badge">${esc(i.source || '其他')}</span><span class="badge">${esc(i.date)}</span></div>
         <div class="row-actions" style="margin-top:6px"><button class="mini ghost" data-act="del-income" data-id="${i.id}">删除</button></div></div>`;
     });
-    $('#view').innerHTML = html;
-    setPage('财富中心');
+    return html;
   }
   function addIncome() {
     openForm('记录收入', [
       { key: 'date', label: '日期', value: today() },
       { key: 'amount', label: '金额（元）', value: '' },
       { key: 'source', label: '来源', type: 'select', options: [{ v: '工资', t: '工资' }, { v: '咨询', t: '咨询' }, { v: '合作', t: '合作' }, { v: '其他', t: '其他' }], value: '咨询' },
-    ], null, (fd) => { if (!fd.amount) return; App.state.income.push(Object.assign({ id: uid() }, fd)); save(); renderWealth(); toast('已记录 💰'); });
+    ], null, (fd) => { if (!fd.amount) return; App.state.income.push(Object.assign({ id: uid() }, fd)); save(); renderSelf(); toast('已记录 💰'); });
   }
 
-  /* ============================================================
-   *  复盘室
-   * ============================================================ */
-  function renderReview() {
+  function renderSelfReview() {
     const s = App.state;
-    const td = today();
     let html = `<div class="card"><h3>🪞 成长复盘室 <span class="tag">用外部视角看自己</span></h3>
-      <div class="tabs">
-        <button class="tab active">每日</button></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" data-act="add-review" data-type="day">✍️ 写今日复盘</button>
         <button class="btn soft sm" data-act="add-review" data-type="week">写每周复盘</button>
@@ -772,11 +774,10 @@
           <button class="mini" data-act="edit-review" data-id="${r.id}">编辑</button>
           <button class="mini ghost" data-act="del-review" data-id="${r.id}">删除</button></div></div>`;
     });
-    $('#view').innerHTML = html;
-    setPage('复盘室');
+    return html;
   }
   function reviewFields(r) {
-    const base = [
+    return [
       { key: 'date', label: '日期', value: r.date || today() },
       { key: 'done', label: '今天/本周/本月完成了什么？', type: 'textarea', value: r.done },
       { key: 'ignored', label: '忽略了什么？', type: 'textarea', value: r.ignored },
@@ -784,13 +785,9 @@
       { key: 'improve', label: '哪些可以优化？', type: 'textarea', value: r.improve },
       { key: 'tomorrow', label: '下一步最重要的事？', type: 'textarea', value: r.tomorrow },
     ];
-    return base;
   }
 
-  /* ============================================================
-   *  决策库
-   * ============================================================ */
-  function renderDecision() {
+  function renderSelfDecision() {
     const s = App.state;
     let html = `<div class="card"><h3>🧭 决策库 <span class="tag">避免反复想同一件事</span></h3>
       <button class="btn sm" data-act="add-decision">+ 记录一个决策</button></div>`;
@@ -804,8 +801,7 @@
           <button class="mini" data-act="edit-decision" data-id="${d.id}">编辑</button>
           <button class="mini ghost" data-act="del-decision" data-id="${d.id}">删除</button></div></div>`;
     });
-    $('#view').innerHTML = html;
-    setPage('决策库');
+    return html;
   }
   function decisionFields(d) {
     return [
@@ -966,7 +962,8 @@
       case 'confirm-insp': confirmInsp(id); break;
       case 'del-insp': if (trashItem('inspirations', id, 'inspiration')) { save(); renderInspiration(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
-      case 'filter-content': contentCol = id; renderContent(); break;
+      case 'content-tab': contentView = id; renderContent(); break;
+      case 'filter-content': contentCol = id; contentView = 'col'; renderContent(); break;
       case 'add-content': editContent(null); break;
       case 'edit-content': editContent(id); break;
       case 'del-content': if (trashItem('content', id, 'content')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -974,7 +971,7 @@
       case 'gen-hot': genHot(); break;
       case 'add-hot': editHot(null); break;
       case 'collect-hot': collectHot(id); break;
-      case 'del-hot': if (trashItem('hotspots', id, 'other')) { save(); renderHot(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+      case 'del-hot': if (trashItem('hotspots', id, 'other')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-customer': editCustomer(null); break;
       case 'edit-customer': editCustomer(id); break;
@@ -985,22 +982,24 @@
       case 'edit-ecom': editEcom(id); break;
       case 'del-ecom': if (trashItem('ecommerce', id, 'other')) { save(); renderEcom(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
+      case 'self-tab': selfView = id; renderSelf(); break;
+
       case 'add-english': addEnglish(); break;
       case 'del-english': if (trashItem('english', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
       case 'add-health': addHealth(); break;
       case 'del-health': if (trashItem('health', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-income': addIncome(); break;
-      case 'del-income': if (trashItem('income', id, 'income')) { save(); renderWealth(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+      case 'del-income': if (trashItem('income', id, 'income')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-review': editReview(null, type); break;
       case 'edit-review': editReview(id); break;
       case 'ai-review': aiReview(id); break;
-      case 'del-review': if (trashItem('reviews', id, 'other')) { save(); renderReview(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+      case 'del-review': if (trashItem('reviews', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-decision': editDecision(null); break;
       case 'edit-decision': editDecision(id); break;
-      case 'del-decision': if (trashItem('decisions', id, 'other')) { save(); renderDecision(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+      case 'del-decision': if (trashItem('decisions', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       /* ---- 回收站操作 ---- */
       case 'trash-filter': App.trashFilter = id; renderTrash(); break;
@@ -1077,7 +1076,7 @@
       { key: 'why', label: '为什么适合你', type: 'textarea', value: h.why },
       { key: 'col', label: '建议栏目', type: 'select', options: COLS.map((c) => ({ v: c.id, t: c.name })), value: h.col || 'campus' },
       { key: 'suggestedTopic', label: '推荐选题方向', type: 'textarea', value: h.suggestedTopic },
-    ], null, (fd) => { if (id) Object.assign(h, fd); else App.state.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false }, fd)); save(); renderHot(); });
+    ], null, (fd) => { if (id) Object.assign(h, fd); else App.state.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false }, fd)); save(); renderContent(); });
   }
   function editCustomer(id) {
     const c = id ? find(App.state.customers, id) : { stage: '流量触达' };
@@ -1097,18 +1096,18 @@
     const r = id ? find(App.state.reviews, id) : { type: type || 'day', date: today() };
     openForm(id ? '编辑复盘' : (r.type === 'day' ? '今日复盘' : r.type === 'week' ? '每周复盘' : '每月复盘'), reviewFields(r), null, (fd) => {
       if (id) Object.assign(r, fd); else App.state.reviews.push(Object.assign({ id: uid(), type: r.type }, fd));
-      save(); renderReview();
+      save(); renderSelf();
     });
   }
   function aiReview(id) {
     const r = find(App.state.reviews, id); if (!r) return;
-    r.ai = analyzeReview(r); save(); renderReview(); toast('AI 已给出外部视角 🪞');
+    r.ai = analyzeReview(r); save(); renderSelf(); toast('AI 已给出外部视角 🪞');
   }
   function editDecision(id) {
     const d = id ? find(App.state.decisions, id) : { date: today() };
     openForm(id ? '编辑决策' : '记录决策', decisionFields(d), null, (fd) => {
       if (id) Object.assign(d, fd); else App.state.decisions.push(Object.assign({ id: uid() }, fd));
-      save(); renderDecision();
+      save(); renderSelf();
     });
   }
 
@@ -1258,9 +1257,8 @@
   function render() {
     const map = {
       today: renderToday, month: renderMonth, growth: renderGrowth, inspiration: renderInspiration,
-      content: renderContent, hot: renderHot, crm: renderCRM, ecom: renderEcom, self: renderSelf,
-      wealth: renderWealth, review: renderReview, decision: renderDecision, aiprofile: renderAIProfile,
-      trash: renderTrash,
+      content: renderContent, crm: renderCRM, ecom: renderEcom, self: renderSelf,
+      aiprofile: renderAIProfile, trash: renderTrash,
     };
     (map[App.current] || renderToday)();
     renderNav(); // 顶部数字气泡刷新

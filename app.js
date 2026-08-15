@@ -260,16 +260,36 @@
     else if (/(家长|学生|女生|女性|小白|新手|普通人)/.test(t)) { extra = '目标受众：开头一句话点明「这条是讲给谁听的」，让家长 / 学生 / 小白一眼觉得和自己有关。'; extraLabel = '目标受众'; }
     return { hook: hook, about: about, shoot: shoot, series: series, extend: extend, extra: extra, extraLabel: extraLabel };
   }
+  // 内容方向建议：统一六段格式，默认折叠（长内容折叠，编号单独换行）
   function renderDirection(x) {
     const d = x.direction; if (!d) return '';
-    const pts = [];
-    pts.push('1. 核心切入：' + esc(d.hook));
-    pts.push('2. 可以讲什么：' + esc(d.about));
-    pts.push('3. 拍摄方式：' + esc(d.shoot));
-    pts.push('4. 适合系列：' + esc(x.series || d.series));
-    pts.push('5. 延伸方向：' + esc(d.extend));
-    if (d.extra) pts.push('6. ' + esc(d.extraLabel || '补充方向') + '：' + esc(d.extra));
-    return '<div class="dir-box"><div class="dir-h">【内容方向建议】</div>' + pts.join('') + '</div>';
+    const series = x.series || d.series || '婧婧带你看泰国';
+    const core = d.hook || '从真实场景切入，抓住观众最关心的痛点。';
+    const why = d.about || '围绕主题拆成几个具体侧面，用你亲历的细节讲具体。';
+    const combine = [
+      '从一个你亲历的具体场景或问题开场，不空泛说教。',
+      '借一个真实细节或反差对比，让人一下觉得和自己有关。',
+      d.extend ? ('延伸到：' + d.extend) : '收尾给一个可执行建议或开放问题，引导评论。'
+    ];
+    const shoot = [
+      d.shoot || '用你最自然的方式讲——学姐视角、真实经历、少修饰。',
+      '配合第一视角实拍 / 真实画面，比精致包装更可信。',
+      '前 3 秒给钩子，结尾留一个互动问题引导收藏评论。'
+    ];
+    const myAngle = (d.extra ? ('补充：' + d.extra) : '') || ('从你「' + series + '」的身份出发，讲你最真实的一次经历。');
+    const extend = d.extend || '同一主题的更多角度、听众自己的故事、可做成系列的几集方向。';
+    const open = App.folds['dir-' + x.id] ? 'open' : '';
+    return `<div class="fold ${open}">
+      <div class="fold-head" data-act="fold" data-target="dir-${x.id}"><span class="arrow">▸</span><span class="fold-t">内容方向建议（点击展开）</span></div>
+      <div class="fold-body"><div class="dir-box">
+        <div class="dir-seg"><b>【核心判断】</b>${esc(core)}</div>
+        <div class="dir-seg"><b>【为什么值得参考】</b>${esc(why)}</div>
+        <div class="dir-seg"><b>【可以怎么结合】</b><br>1. ${esc(combine[0])}<br>2. ${esc(combine[1])}<br>3. ${esc(combine[2])}</div>
+        <div class="dir-seg"><b>【参考拍摄方式】</b><br>1. ${esc(shoot[0])}<br>2. ${esc(shoot[1])}<br>3. ${esc(shoot[2])}</div>
+        <div class="dir-seg"><b>【我的内容切入】</b>${esc(myAngle)}</div>
+        <div class="dir-seg"><b>【推荐系列】</b>${esc(series)}</div>
+        <div class="dir-seg"><b>【延伸选题】</b>${esc(extend)}</div>
+      </div></div></div>`;
   }
   function genDir(id) {
     const x = App.state.content.find((c) => c.id === id); if (!x) return;
@@ -596,7 +616,7 @@
         html += `<div class="quick-add"><input id="qa-link" placeholder="粘贴链接（小红书 / 抖音 / 视频号 / 文章…）">
           <input id="qa-link-title" placeholder="标题（可留空，自动取域名）" style="max-width:170px;flex:0 0 auto">
           <button class="btn sm green" data-act="add-insp-link">保存链接</button></div>
-          <div class="tiny muted" style="margin-top:6px">平台限制：无法直接抓取正文，仅保存链接；点「编辑」可补充摘要 / 值得参考 / 如何迁移。</div></div>`;
+          <div class="tiny muted" style="margin-top:6px">粘贴后自动识别平台、尝试抓取标题 / 简介（平台限制可能失败，最少会保留链接）；点「编辑」可补充摘要 / 值得参考 / 如何迁移。</div></div>`;
       } else {
         html += `<div class="quick-add"><input id="qa-note" placeholder="此刻冒出的一个想法 / 一句话…">
           <button class="btn sm green" data-act="add-insp-note">记录</button></div>
@@ -649,32 +669,80 @@
   function renderHotItem(h) {
     const colName = (COLS.find((c) => c.id === h.col) || {}).name || h.col || '—';
     const fitCls = h.fit === '适合' ? 's2' : h.fit === '可参考' ? 's1' : 's4';
-    const linkHtml = h.link ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开来源 ↗</a>` : (h.source ? esc(h.source) : '—');
+    const isReal = h.linkType === 'real';
+    const linkTypeBadge = isReal
+      ? '<span class="badge s2">原内容链接</span>'
+      : '<span class="badge warn">平台搜索 / 榜单链接</span>';
+    const linkHtml = h.link
+      ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开${isReal ? '原内容' : '搜索/榜单'} ↗</a>`
+      : (h.source ? esc(h.source) : '—');
+    const a = h.analysis || {};
+    const open = App.folds['hotanal-' + h.id] ? 'open' : '';
+    const teaser = a.whyHot || h.why || '点开看如何结合';
+    const analysisFold = (a.whyHot || a.discussion || a.angle)
+      ? `<div class="fold ${open}">
+          <div class="fold-head" data-act="fold" data-target="hotanal-${h.id}"><span class="arrow">▸</span><span class="fold-t">如何结合分析：${esc(teaser)}</span></div>
+          <div class="fold-body">${renderHotAnalysis(a)}</div>
+        </div>`
+      : (h.combine ? `<div class="li-sub"><b>如何结合：</b>${esc(h.combine)}</div>` : '');
     return `<div class="list-item hot"><div class="li-top">
-      <span class="rank">#${h.rank != null ? h.rank : '—'}</span>
+      <span class="rank">${h.rank != null ? h.rank : '—'}</span>
       <div class="li-title">${esc(h.topic)}</div>${h.collected ? '<span class="badge s2">已收录</span>' : ''}</div>
       <div class="li-sub">
         <b>来源平台：</b>${esc(h.source || '—')}　<b>热度：</b>${esc(h.heat || '—')}<br>
-        <b>为什么值得关注：</b>${esc(h.why || '—')}<br>
-        <b>链接：</b>${linkHtml}<br>
-        <b>AI 是否适合：</b><span class="badge ${fitCls}">${esc(h.fit || '—')}</span>　<b>建议栏目：</b>${esc(colName)}<br>
-        <b>如何结合：</b>${esc(h.combine || '—')}
+        <b>是否适合：</b><span class="badge ${fitCls}">${esc(h.fit || '—')}</span>　<b>建议栏目：</b>${esc(colName)}<br>
+        <b>链接类型：</b>${linkTypeBadge}　<b>链接：</b>${linkHtml}
       </div>
+      ${analysisFold}
       <div class="row-actions" style="margin-top:8px">
         ${h.collected ? '' : `<button class="mini green" data-act="collect-hot" data-id="${h.id}">收录为选题</button>`}
         <button class="mini ghost" data-act="del-hot" data-id="${h.id}">删除</button></div></div>`;
   }
+  // 热点「如何结合」10 点分析（纯本地启发式，不生成完整口播稿）
+  function renderHotAnalysis(a) {
+    if (!a || !a.whyHot) return '';
+    const row = (label, val) => val ? `<div class="ha-row"><b>${label}：</b>${esc(val)}</div>` : '';
+    return `<div class="ha-box">
+      ${row('1. 热点为什么火', a.whyHot)}
+      ${row('2. 大家主要在讨论什么', a.discussion)}
+      ${row('3. 可以借什么情绪', a.emotion)}
+      ${row('4. 和你的连接点', a.connection)}
+      ${row('5. 切入角度', a.angle)}
+      ${row('6. 推荐视频类型', a.videoType)}
+      ${row('7. 推荐系列', a.series)}
+      ${row('8. 开头（前 3 秒）', a.opening)}
+      ${row('9. 中间（讲什么）', a.middle)}
+      ${row('10. 落点（结尾）', a.ending)}
+      ${row('可借鉴的爆款形式', a.viralRef)}
+    </div>`;
+  }
   function renderInspItem(x) {
     if (x.kind === 'link') {
-      const linkHtml = x.link ? `<a class="chip link" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开链接 ↗</a>` : '';
-      const detail = `<div class="li-sub insp-detail" id="insp-${x.id}" style="display:none">
+      let host = '';
+      try { host = x.link ? new URL(x.link).hostname : ''; } catch (e) { host = ''; }
+      const pname = detectPlatform(host);
+      const pcolor = platformColorOf(pname);
+      const linkHtml = x.link ? `<a class="chip link insp-open" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开链接 ↗</a>` : '';
+      const aiDir = x.direction ? renderDirection(x) : '';
+      const detailOpen = App.folds['inspd-' + x.id] ? '' : 'display:none';
+      const detail = `<div class="li-sub insp-detail" id="insp-${x.id}" style="${detailOpen}">
+        ${x.fetching ? '<span class="tiny muted">正在识别平台 / 尝试抓取标题与简介…</span>\n' : ''}
         ${x.summary ? '<b>摘要：</b>' + esc(x.summary) + '\n' : ''}
         ${x.refWhy ? '<b>值得参考：</b>' + esc(x.refWhy) + '\n' : ''}
-        ${x.howMigrate ? '<b>如何迁移：</b>' + esc(x.howMigrate) : ''}</div>`;
-      return `<div class="list-item insp-card"><div class="insp-left">
-        <div class="li-title">${esc(x.title)}</div>${linkHtml}</div>
+        ${x.howMigrate ? '<b>如何迁移：</b>' + esc(x.howMigrate) : ''}
+        ${!x.summary && !x.refWhy && !x.howMigrate && !x.fetching ? '<span class="tiny muted">暂未获取到正文，点击「打开链接」查看。</span>' : ''}
+        ${aiDir}</div>`;
+      const detailBtn = App.folds['inspd-' + x.id] ? '收起细节' : '展开细节';
+      return `<div class="list-item insp-card">
+        <div class="insp-main">
+          <div class="insp-avatar" style="background:${pcolor}">${esc(pname.slice(0, 1))}</div>
+          <div class="insp-left">
+            <div class="li-title">${esc(x.title)}</div>
+            <div class="insp-plat">${esc(pname)}　${linkHtml}</div>
+          </div>
+        </div>
         <div class="insp-right">
-          <button class="mini ghost" data-act="toggle-insp-detail" data-id="${x.id}">展开细节</button>
+          <button class="mini ghost" data-act="toggle-insp-detail" data-id="${x.id}">${detailBtn}</button>
           <button class="mini" data-act="promote-insp" data-id="${x.id}">收录为选题</button>
           <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
           <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button>
@@ -711,43 +779,237 @@
   /* ============================================================
    *  热点雷达（已并入内容宇宙顶部 tab，下方函数仍保留供 case 调用）
    * ============================================================ */
+  // ---- 链接构造 / 平台识别 / 元数据抓取 / 平台配色 ----
+  // 纯前端无后端：不能拿具体内容 URL 时，退化成「关键词搜索」或「平台榜单」
+  function buildLinkUrl(platform, keyword) {
+    const kw = encodeURIComponent((keyword || '').trim());
+    const map = {
+      '小红书':   'https://www.xiaohongshu.com/search_result?keyword=' + kw + '&source=web_explore_feed',
+      '抖音':     'https://www.douyin.com/search/' + kw + '/',
+      '微博':     'https://s.weibo.com/weibo?q=' + kw,
+      '知乎':     'https://www.zhihu.com/search?type=content&q=' + kw,
+      '百度':     'https://www.baidu.com/s?wd=' + kw,
+      '今日头条': 'https://so.toutiao.com/search?keyword=' + kw + '&pd=information',
+      'B站':      'https://search.bilibili.com/all?keyword=' + kw,
+      '视频号':   'https://channels.weixin.qq.com/', // 视频号无公开网页搜索，仅列平台入口
+      '新闻':     'https://www.baidu.com/s?wd=' + kw,
+      '热梗':     'https://s.weibo.com/weibo?q=' + kw,
+      '爆款形式': 'https://www.douyin.com/search/' + kw + '/',
+      '可借鉴拍摄方式': 'https://www.douyin.com/search/' + kw + '/',
+      '可迁移表达方式': 'https://www.xiaohongshu.com/search_result?keyword=' + kw + '&source=web_explore_feed',
+    };
+    return map[platform] || ('https://www.baidu.com/s?wd=' + kw);
+  }
+  function detectPlatform(host) {
+    const h = (host || '').toLowerCase();
+    if (!h) return '网页';
+    if (h.includes('xiaohongshu.com') || h.includes('xhslink.com')) return '小红书';
+    if (h.includes('douyin.com')) return '抖音';
+    if (h.includes('channels.weixin') || h.includes('video.weixin')) return '视频号';
+    if (h.includes('weibo.com') || h.includes('weibo.cn')) return '微博';
+    if (h.includes('toutiao.com')) return '今日头条';
+    if (h.includes('zhihu.com')) return '知乎';
+    if (h.includes('bilibili.com')) return 'B站';
+    if (h.includes('baidu.com')) return '百度';
+    if (h.includes('mp.weixin.qq.com')) return '微信公众号';
+    if (h.includes('youtube.com') || h.includes('youtu.be')) return 'YouTube';
+    return h.replace(/^www\./, '');
+  }
+  function platformColorOf(name) {
+    const map = {
+      '小红书': '#FF2442',
+      '抖音': '#161823',
+      '微博': '#E6162D',
+      '知乎': '#0084FF',
+      'B站': '#FB7299',
+      '百度': '#2932E1',
+      '今日头条': '#F85959',
+      '视频号': '#07C160',
+      '微信公众号': '#07C160',
+      'YouTube': '#FF0000'
+    };
+    return map[name] || '#9DB8C9';
+  }
+  // 异步抓取原页面 og:title / og:description / <title> / meta description
+  // �️ 纯前端无后端：小红书/抖音/视频号等多数平台会因 CORS 失败 → 静默返回空，不影响主流程
+  async function tryFetchMeta(url) {
+    if (!url || !/^https?:\/\//i.test(url)) return { title: '', description: '' };
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 3000);
+      const resp = await fetch(url, { method: 'GET', mode: 'cors', signal: ctrl.signal, headers: { 'Accept': 'text/html,*/*' } });
+      clearTimeout(timer);
+      if (!resp.ok) return { title: '', description: '' };
+      const html = await resp.text();
+      const ogT = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+      const ogD = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+      const md  = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+      const tt  = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      return {
+        title: (ogT && ogT[1]) || (tt && tt[1].trim()) || '',
+        description: (ogD && ogD[1]) || (md && md[1]) || ''
+      };
+    } catch (e) { return { title: '', description: '' }; }
+  }
+  // 热点本地启发式分析（10 点；纯本地，无联网数据源）
+  function buildHotAnalysis(seed, dir) {
+    const platform = seed.source || '通用';
+    const topic = seed.topic || '';
+    const colName = ((COLS.find((c) => c.id === (seed.col || 'thailand'))) || {}).name || '婧婧带你看泰国';
+    const isVlog = /(vlog|生活|拍摄|沉浸|日常)/.test(topic);
+    const isInfo = /(攻略|避坑|测评|对比|签证|物价|清单|干货|规划|就业|变现)/.test(topic);
+    const isStory = /(故事|经历|感受|真实|选择|采访|学姐|创业)/.test(topic);
+    const viralRef = isVlog
+      ? '常见形式：第一视角沉浸拍摄，3 秒内出现生活化场景；中段踩点切换；结尾留一句开放问题引导评论'
+      : isInfo
+      ? '常见形式：封面大字标题 + 分点列出真实数据/经验；中段给具体场景；结尾给可执行建议'
+      : isStory
+      ? '常见形式：开头抛具体场景或抉择，中段讲真实经历 + 转折，结尾给共鸣'
+      : '常见形式：前 3 秒给一个反常识判断或具体场景，中段讲清楚为什么，结尾给一个可执行建议';
+    return {
+      whyHot: seed.why || '近期热度上升',
+      discussion: '大家主要在讨论：' + (seed.discussion || '相关话题的关注度、对比、避坑与真实体验'),
+      emotion: seed.emotion || '好奇 / 焦虑 / 实用收藏',
+      connection: '和你「' + colName + '」的连接点：' + (seed.connection || '从真实亲历或观察切入，把热点话题转成可拍的角度'),
+      angle: seed.angle || ('从「' + topic + '」切入，避免讲大道理，先给一个具体场景或问题'),
+      videoType: seed.videoType || (isVlog ? 'vlog / 第一视角' : isInfo ? '信息密度型 / 测评干货' : isStory ? '口播 / 故事讲述' : '混合形式'),
+      series: colName,
+      opening: dir && dir.hook ? dir.hook : '前 3 秒直接抛一个具体场景或问题',
+      middle: dir && dir.about ? dir.about : '讲 2–3 个具体要点，用真实细节支撑',
+      ending: dir && dir.extend ? dir.extend : '收尾给一个行动建议或共鸣点',
+      viralRef: viralRef
+    };
+  }
   // 脚本只给框架：开头 / 中间点 / 落点（不生成完整口播稿）
   function genScript(title, d) {
     return '【开头】' + (d.hook || '用一个具体场景或问题开场，3 秒内抓住注意力。') + '\n'
       + '【中间点】' + (d.about || '讲 2–3 个具体要点，用真实细节支撑。') + '\n'
       + '【落点】' + (d.extend || '收尾给一个行动建议或共鸣点，引导点赞收藏。');
   }
+  // ⚠️ 数据安全：绝对不删除任何已有热点。仅在「同 topic+source 不存在」时 APPEND。
   function genHot() {
     const s = App.state;
-    // 先移除上一批自动生成、且未被收录的热点，避免重复堆积
-    s.hotspots = s.hotspots.filter((h) => !(h.auto && !h.collected));
+    const batch = 'h' + Date.now().toString(36);
     const seeds = [
-      { topic: '泰国免签政策再调整', source: '新闻', heat: '高', why: '直接影响赴泰人群，搜索量大', col: 'thailand', fit: '适合', combine: '做「最新赴泰注意事项」带你看泰国', link: 'https://top.baidu.com/board?tab=realtime' },
-      { topic: '留学生回国就业现状', source: '小红书', heat: '高', why: '家长/学生焦虑高、互动强', col: 'listens', fit: '适合', combine: '听你说：采访留学生真实感受', link: 'https://www.xiaohongshu.com/explore' },
-      { topic: '一个人去泰国生活 vlog 爆火', source: '抖音', heat: '高', why: '沉浸式内容涨粉快', col: 'thailand', fit: '适合', combine: '带你看泰国：第一视角真实生活', link: 'https://www.douyin.com/hot' },
-      { topic: '女性轻创业话题升温', source: '视频号', heat: '中', why: '女性成长受众精准', col: 'listens', fit: '适合', combine: '听你说：你的创业真实选择与理由', link: 'https://channels.weixin.qq.com/' },
-      { topic: '校园食堂暗访系列走红', source: '抖音', heat: '中', why: '学生党共鸣强', col: 'campus', fit: '可参考', combine: '带你看校园：真实食堂体验', link: 'https://www.douyin.com/hot' },
-      { topic: '泰国物价真实测评', source: '小红书', heat: '高', why: '实用信息收藏率高', col: 'thailand', fit: '适合', combine: '带你看泰国：中泰消费对比', link: 'https://www.xiaohongshu.com/explore' },
-      { topic: '高考后留学规划热', source: '知乎', heat: '中', why: '节点性强、搜索精准', col: 'campus', fit: '适合', combine: '带你看校园：留学准备清单', link: 'https://www.zhihu.com/hot' },
-      { topic: '反焦虑治愈系口播形式', source: '热梗', heat: '高', why: '形式可迁移到任意系列', col: 'listens', fit: '可参考', combine: '用治愈语气讲你的真实经历', link: 'https://www.douyin.com/hot' },
-      { topic: '中英夹杂表达在短视频走红', source: '可迁移表达方式', heat: '中', why: '人设自然、易模仿', col: 'thailand', fit: '可参考', combine: '结合你的双语背景自然表达', link: 'https://www.xiaohongshu.com/explore' },
-      { topic: '泰国旅游避坑合集', source: '抖音', heat: '高', why: '刚需、收藏高', col: 'thailand', fit: '适合', combine: '带你看泰国：避坑攻略', link: 'https://www.douyin.com/hot' },
-      { topic: '大学宿舍改造爆款', source: '小红书', heat: '中', why: '视觉化、易拍', col: 'campus', fit: '可参考', combine: '带你看校园：真实宿舍', link: 'https://www.xiaohongshu.com/explore' },
-      { topic: '学姐说人设受捧', source: '爆款形式', heat: '中', why: '贴合你的人设', col: 'listens', fit: '适合', combine: '听你说/带你看：学姐视角', link: 'https://www.bilibili.com/v/popular/rank/all' },
-      { topic: '海外生活文化差异梗', source: '热梗', heat: '中', why: '易传播', col: 'thailand', fit: '可参考', combine: '带你看泰国：文化梗', link: 'https://s.weibo.com/top/summary' },
-      { topic: '副业变现经验贴', source: '小红书', heat: '高', why: '搜索量大', col: 'listens', fit: '可参考', combine: '听你说：你的轻创业', link: 'https://www.xiaohongshu.com/explore' },
-      { topic: '泰国签证攻略长文收藏高', source: '知乎', heat: '中', why: '实用、长尾流量', col: 'thailand', fit: '适合', combine: '带你看泰国：签证攻略', link: 'https://www.zhihu.com/hot' },
-      { topic: '真实记录不加滤镜拍摄方式', source: '可借鉴拍摄方式', heat: '中', why: '真实感涨粉', col: 'campus', fit: '适合', combine: '任意系列：少包装多真实', link: 'https://www.bilibili.com/v/popular/rank/all' },
+      { topic: '泰国免签政策再调整', source: '新闻', heat: '高', why: '直接影响赴泰人群，搜索量大', col: 'thailand', fit: '适合',
+        discussion: '要不要现在办签证、落地要不要补材料、对学生党有什么影响',
+        emotion: '实用 / 怕错过',
+        connection: '你人在泰国，第一视角讲「最新政策 + 实际操作」',
+        angle: '不念政策原文，直接说「我刚去办 / 身边朋友刚经历」',
+        videoType: '信息密度型 + 第一视角实拍' },
+      { topic: '一个人去泰国生活 vlog 爆火', source: '抖音', heat: '高', why: '沉浸式内容涨粉快', col: 'thailand', fit: '适合',
+        discussion: '孤独感、自由感、租房吃饭日常开销',
+        emotion: '向往 / 治愈',
+        connection: '你本身就是「一个人去泰国生活」的主角',
+        angle: '一周真实生活 vlog，账单 + 路线 + 吃饭',
+        videoType: 'vlog / 第一视角沉浸' },
+      { topic: '女性轻创业话题升温', source: '视频号', heat: '中', why: '女性成长受众精准', col: 'listens', fit: '适合',
+        discussion: '要不要辞职创业、起步资金多少、女性做内容是不是更好',
+        emotion: '共鸣 / 焦虑',
+        connection: '你正在做的事就是女性轻创业 + 内容',
+        angle: '聊你最真实的一次选择和当时的理由',
+        videoType: '口播 / 故事讲述' },
+      { topic: '留学生回国就业现状', source: '小红书', heat: '高', why: '家长/学生焦虑高、互动强', col: 'listens', fit: '适合',
+        discussion: '留学到底值不值、回国找工作卡哪里、HR 看什么',
+        emotion: '焦虑 / 纠结',
+        connection: '你的留学生身份 + 求职或观察',
+        angle: '听你说：采访一个留学回国的真实案例',
+        videoType: '采访 / 对谈' },
+      { topic: '校园食堂暗访系列走红', source: '抖音', heat: '中', why: '学生党共鸣强', col: 'campus', fit: '可参考',
+        discussion: '食堂到底干不干净、一顿多少钱、有没有真正好吃的',
+        emotion: '好奇 / 共鸣',
+        connection: '你在校园 / 留学场景里直接实拍',
+        angle: '暗访一餐，看厨房 / 价格 / 真实体验',
+        videoType: 'vlog / 实拍' },
+      { topic: '泰国物价真实测评', source: '小红书', heat: '高', why: '实用信息收藏率高', col: 'thailand', fit: '适合',
+        discussion: '泰国到底便宜吗、一顿饭多少钱、房租多少',
+        emotion: '实用 / 收藏',
+        connection: '你在泰国，亲历账单最有说服力',
+        angle: '一周真实账单拆解：吃饭 / 交通 / 房租 / 日常',
+        videoType: '信息密度型 + 实拍' },
+      { topic: '高考后留学规划热', source: '知乎', heat: '中', why: '节点性强、搜索精准', col: 'campus', fit: '适合',
+        discussion: '什么时候准备、要不要找中介、家庭预算怎么算',
+        emotion: '焦虑 / 期待',
+        connection: '你的留学经验是最真实的样本',
+        angle: '「如果重新来一次我怎么做」清单',
+        videoType: '口播 / 清单型' },
+      { topic: '反焦虑治愈系口播形式', source: '热梗', heat: '高', why: '形式可迁移到任意系列', col: 'listens', fit: '可参考',
+        discussion: '大家都累了，不想再被贩卖焦虑',
+        emotion: '治愈 / 平静',
+        connection: '你的真实故事本身就是反焦虑素材',
+        angle: '用你经历的一件具体的小事，讲「我曾经也这样，后来…」',
+        videoType: '口播 / 治愈系' },
+      { topic: '中英夹杂表达在短视频走红', source: '可迁移表达方式', heat: '中', why: '人设自然、易模仿', col: 'thailand', fit: '可参考',
+        discussion: '双语背景的人怎么表达更自然',
+        emotion: '新鲜 / 亲切',
+        connection: '你的双语背景是天然资源',
+        angle: '在日常场景自然夹杂，记录一段真实对话',
+        videoType: 'vlog / 第一视角' },
+      { topic: '泰国旅游避坑合集', source: '抖音', heat: '高', why: '刚需、收藏高', col: 'thailand', fit: '适合',
+        discussion: '第一次去泰国最怕被坑什么',
+        emotion: '焦虑 / 实用',
+        connection: '你亲历踩坑最可信',
+        angle: '列出 5 个你真实踩过的坑，每个讲一个具体场景',
+        videoType: '信息密度型 + 实拍' },
+      { topic: '大学宿舍改造爆款', source: '小红书', heat: '中', why: '视觉化、易拍', col: 'campus', fit: '可参考',
+        discussion: '宿舍到底能不能住得舒服、改造花多少钱',
+        emotion: '向往 / 实用',
+        connection: '你可以拍「留学宿舍真实样子」',
+        angle: '实拍你现在的宿舍/房间，不刻意改造',
+        videoType: 'vlog / 第一视角' },
+      { topic: '学姐说人设受捧', source: '爆款形式', heat: '中', why: '贴合你的人设', col: 'listens', fit: '适合',
+        discussion: '过来人讲真话比教程更打动人',
+        emotion: '信任 / 共鸣',
+        connection: '你天然就是「学姐说」',
+        angle: '讲一个具体学弟学妹的提问 + 你的真实建议',
+        videoType: '口播 / 学姐视角' },
+      { topic: '海外生活文化差异梗', source: '热梗', heat: '中', why: '易传播', col: 'thailand', fit: '可参考',
+        discussion: '出国后才发现的「原来如此」',
+        emotion: '好奇 / 笑点',
+        connection: '你每天都在经历',
+        angle: '「我以为 / 结果」反差对比，3 个具体例子',
+        videoType: '口播 / 梗型' },
+      { topic: '副业变现经验贴', source: '小红书', heat: '高', why: '搜索量大', col: 'listens', fit: '可参考',
+        discussion: '普通人能不能靠副业赚到第一桶金',
+        emotion: '期待 / 焦虑',
+        connection: '你正在做内容副业',
+        angle: '「我做副业第一年真实收入」账单展示',
+        videoType: '信息密度型 / 个人故事' },
+      { topic: '泰国签证攻略长文收藏高', source: '知乎', heat: '中', why: '实用、长尾流量', col: 'thailand', fit: '适合',
+        discussion: '留学签 / 落地签 / 养老签怎么选',
+        emotion: '实用 / 焦虑',
+        connection: '你的真实操作经验',
+        angle: '「我办 XX 签证的真实流程 + 时间 + 钱」',
+        videoType: '信息密度型 / 攻略' },
+      { topic: '真实记录不加滤镜拍摄方式', source: '可借鉴拍摄方式', heat: '中', why: '真实感涨粉', col: 'campus', fit: '适合',
+        discussion: '真实感 > 精包装，观众更信任',
+        emotion: '信任 / 舒服',
+        connection: '少包装多真实刚好适合你的内容',
+        angle: '拍你今天的一段真实日常，不加字幕不加滤镜',
+        videoType: 'vlog / 真实记录' },
     ];
+    let added = 0, skipped = 0;
     seeds.forEach((sd, i) => {
+      // 去重：同 topic + source 已存在则跳过（永不删除现有数据）
+      const dup = s.hotspots.find((h) => h.topic === sd.topic && h.source === sd.source);
+      if (dup) { skipped++; return; }
       const sg = suggestHot(sd.topic);
       const dir = suggestDirection(sd.topic, sd.why);
+      const analysis = buildHotAnalysis(sd, dir);
+      const url = buildLinkUrl(sd.source, sd.topic);
       s.hotspots.push(Object.assign(
-        { id: uid(), date: today(), collected: false, auto: true, rank: i + 1, suggestedTopic: sd.topic + '：' + dir.hook, combine: sd.combine || dir.extend, series: dir.series },
-        sd, { col: sd.col || sg.col }
+        { id: uid(), date: today(), collected: false, auto: true, batch: batch,
+          rank: i + 1,
+          suggestedTopic: sd.topic,
+          series: dir.series,
+          linkType: 'search',
+          link: url },
+        sd, { col: sd.col || sg.col, analysis: analysis, combine: sd.angle || (dir && dir.extend) || '可结合你的系列切入' }
       ));
+      added++;
     });
-    save(); renderContent(); toast('已刷新热点库 📡');
+    save(); renderContent();
+    toast(added ? ('新增 ' + added + ' 条热点' + (skipped ? '，' + skipped + ' 条已存在已跳过' : '')) : '已是最新，没有新增 🌿');
   }
   function collectHot(id) {
     const h = App.state.hotspots.find((x) => x.id === id); if (!h) return;
@@ -761,13 +1023,29 @@
     h.collected = true; save(); renderContent(); toast('已收录为选题 🎬');
   }
   // ---- 灵感库：链接 / 随手记录（统一进入选题管理体系 s.content）----
+  // 灵感库链接：先保存（绝不因抓取失败而丢链接），后异步尝试抓标题/简介/平台/方向
+  // 纯前端无后端：多数平台会因 CORS 失败 → 静默降级，最少保留链接 + 提示
   function addInspLink(url, title) {
     url = (url || '').trim(); if (!url) return;
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     let host = url;
     try { host = new URL(url).hostname; } catch (e) { /* 保留原串 */ }
-    App.state.content.push({ id: uid(), kind: 'link', link: url, title: title || host, summary: '', refWhy: '', howMigrate: '', status: '灵感', createdAt: today() });
-    save(); renderContent(); toast('已保存链接 🔗');
+    const id = uid();
+    App.state.content.push({ id: id, kind: 'link', link: url, title: title || host, summary: '', refWhy: '', howMigrate: '', status: '灵感', createdAt: today(), fetching: true });
+    save(); renderContent(); toast('已保存链接 🔗（正在识别平台 / 抓标题）');
+    tryFetchMeta(url).then((meta) => {
+      const it = find(App.state.content, id); if (!it) return; // 已被删则不回填，避免脏写
+      const t = (meta.title || '').replace(/\s+/g, ' ').trim();
+      const d = (meta.description || '').replace(/\s+/g, ' ').trim();
+      if (!title && t) it.title = t.slice(0, 120);
+      if (d) it.summary = d.slice(0, 300);
+      const dir = suggestDirection(it.title, '');
+      it.direction = dir; it.series = dir.series;
+      it.fetching = false;
+      save(); renderContent();
+    }).catch(() => {
+      const it = find(App.state.content, id); if (it) { it.fetching = false; save(); renderContent(); }
+    });
   }
   function addInspNote(text) {
     text = (text || '').trim(); if (!text) return;

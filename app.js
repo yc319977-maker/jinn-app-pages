@@ -203,7 +203,7 @@
     if (t.includes('泰国') || t.includes('留学') || t.includes('海外')) { col = 'thailand'; dir = '用「带你看」的视角，记录真实生活与文化差异。'; }
     else if (t.includes('校园') || t.includes('学校') || t.includes('学生') || t.includes('教育')) { col = 'campus'; dir = '讲一个具体的学生/家长故事，比讲道理更打动人。'; }
     else if (t.includes('采访') || t.includes('人物') || t.includes('故事')) { col = 'listens'; dir = '用「听你说」的方式，让人开口讲自己的故事。'; }
-    else if (t.includes('商业') || t.includes('创业') || t.includes('机会')) { col = 'business'; dir = '拆解一个你观察到的商业现象，给出普通人能用的判断。'; }
+    else if (t.includes('商业') || t.includes('创业') || t.includes('机会')) { col = 'listens'; dir = '用一个真实发生的小事开场，讲你的判断和背后的理由，真诚一点。'; }
     return { col, dir };
   }
   /* ---------------- 选题栏目：AI 内容方向建议（本地启发式） ---------------- */
@@ -561,95 +561,226 @@
     { id: 'thailand', name: '婧婧带你看泰国' },
     { id: 'campus', name: '婧婧带你看校园' },
     { id: 'listens', name: '婧婧听你说' },
-    { id: 'business', name: '商业观察' },
-    { id: 'inspoLib', name: '灵感库' },
   ];
+  // 系列名 → 栏目 id（AI 推荐方向后自动归入对应栏目）
+  const SERIES_COL = { '婧婧听你说': 'listens', '婧婧带你看泰国': 'thailand', '婧婧带你看校园': 'campus' };
   const CSTATUS = ['灵感', '待制作', '拍摄中', '剪辑中', '已发布', '复盘'];
   let contentCol = 'thailand';
-  let contentView = 'col'; // 'col' 选题栏目 / 'hot' 热点雷达
+  let contentView = 'col'; // 'col' 选题栏目 / 'hot' 热点雷达 / 'insp' 灵感库
+  let inspKind = 'link'; // 灵感库子视图：'link' 链接 / 'note' 随手记录
   function renderContent() {
     const s = App.state;
     const colTabs = COLS.map((c) => `<button class="tab ${contentView === 'col' && c.id === contentCol ? 'active' : ''}" data-act="filter-content" data-id="${c.id}">${c.name}</button>`).join('');
     const topTabs = `<button class="tab ${contentView === 'col' ? 'active' : ''}" data-act="content-tab" data-id="col">🎬 选题栏目</button>
-      <button class="tab ${contentView === 'hot' ? 'active' : ''}" data-act="content-tab" data-id="hot">📡 热点雷达</button>`;
+      <button class="tab ${contentView === 'hot' ? 'active' : ''}" data-act="content-tab" data-id="hot">📡 热点雷达</button>
+      <button class="tab ${contentView === 'insp' ? 'active' : ''}" data-act="content-tab" data-id="insp">💡 灵感库</button>`;
 
-    let html = `<div class="card"><h3>🎬 婧婧内容宇宙 <span class="tag">${contentView === 'hot' ? '热点雷达' : COLS.find((c) => c.id === contentCol).name}</span></h3>
-      <div class="tabs">${topTabs}</div>
-      ${contentView === 'col' ? `<div class="tabs">${colTabs}</div>
-      <button class="btn sm green" data-act="add-content">+ 新建选题</button>` : `<div class="tiny muted" style="margin-bottom:10px">提示：连接数据源后可每日自动整理。当前支持手动收录 + AI 方向建议（本地启发式）。</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" data-act="gen-hot">✨ AI 给方向建议</button>
-        <button class="btn soft sm" data-act="add-hot">+ 收录热点</button>
-      </div>`}</div>`;
+    const tag = contentView === 'hot' ? '热点雷达' : contentView === 'insp' ? '灵感库' : COLS.find((c) => c.id === contentCol).name;
+    let html = `<div class="card"><h3>🎬 婧婧内容宇宙 <span class="tag">${tag}</span></h3>
+      <div class="tabs">${topTabs}</div>`;
 
     if (contentView === 'col') {
-      const list = s.content.filter((x) => x.col === contentCol).slice().reverse();
-      if (!list.length) html += `<div class="empty"><span class="em">🎥</span>这个栏目还没有选题，记录第一个灵感吧。</div>`;
-      list.forEach((x) => {
-        const st = x.status || '灵感';
-        const stCls = { '灵感': 's1', '待制作': 's1', '拍摄中': 's3', '剪辑中': 's3', '已发布': 's2', '复盘': 's4' }[st] || 's1';
-        html += `<div class="list-item"><div class="li-top">
-          <div class="li-title">${esc(x.title)}</div><span class="badge ${stCls}">${st}</span></div>
-          <div class="li-sub">${x.source ? '来源：' + esc(x.source) + '\n' : ''}${x.idea ? '想法：' + esc(x.idea) + '\n' : ''}
-          ${x.publishTime ? '发布：' + esc(x.publishTime) + '　' : ''}${x.dataReview ? '复盘：' + esc(x.dataReview) : ''}</div>
-          ${x.direction ? renderDirection(x) : '<div class="tiny muted" style="margin-top:6px">还没有内容方向建议</div>'}
-          <div class="row-actions" style="margin-top:8px">
-            <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
-            <button class="mini" data-act="gen-dir" data-id="${x.id}">${x.direction ? '重新生成方向' : '✨ 生成方向建议'}</button>
-            <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
-      });
+      html += `<div class="tabs">${colTabs}</div>
+      <button class="btn sm green" data-act="add-content">+ 新建选题</button></div>`;
+    } else if (contentView === 'hot') {
+      html += `<div class="tiny muted" style="margin-bottom:10px">提示：自动抓取需联网数据源（当前平台限制，使用本地热点库 + AI 方向建议）。点「刷新热点」更新本地库。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm green" data-act="gen-hot">🔄 刷新热点</button>
+        <button class="btn soft sm" data-act="add-hot">+ 收录热点</button>
+      </div></div>`;
     } else {
-      const list = s.hotspots.slice().reverse();
-      if (!list.length) html += `<div class="empty"><span class="em">📡</span>还没有热点。点「AI 给方向建议」试试。</div>`;
-      list.forEach((h) => {
-        const colName = (COLS.find((c) => c.id === h.col) || {}).name || h.col;
-        html += `<div class="list-item"><div class="li-top">
-          <div class="li-title">${esc(h.topic)}</div>${h.collected ? '<span class="badge s2">已收藏</span>' : ''}</div>
-          <div class="li-sub">${h.source ? '来源：' + esc(h.source) + '　' : ''}${h.heat ? '热度：' + esc(h.heat) + '\n' : ''}
-          ${h.why ? '为什么适合你：' + esc(h.why) + '\n' : ''}<b>建议栏目：</b>${esc(colName)}　<b>推荐选题：</b>${esc(h.suggestedTopic || '')}</div>
-          <div class="row-actions" style="margin-top:8px">
-            ${h.collected ? '' : `<button class="mini green" data-act="collect-hot" data-id="${h.id}">收藏入选题库</button>`}
-            <button class="mini ghost" data-act="del-hot" data-id="${h.id}">删除</button></div></div>`;
-      });
+      const sub = `<button class="tab ${inspKind === 'link' ? 'active' : ''}" data-act="insp-sub" data-id="link">🔗 链接</button>
+        <button class="tab ${inspKind === 'note' ? 'active' : ''}" data-act="insp-sub" data-id="note">📝 随手记录</button>`;
+      html += `<div class="tabs">${sub}</div>`;
+      if (inspKind === 'link') {
+        html += `<div class="quick-add"><input id="qa-link" placeholder="粘贴链接（小红书 / 抖音 / 视频号 / 文章…）">
+          <input id="qa-link-title" placeholder="标题（可留空，自动取域名）" style="max-width:170px;flex:0 0 auto">
+          <button class="btn sm green" data-act="add-insp-link">保存链接</button></div>
+          <div class="tiny muted" style="margin-top:6px">平台限制：无法直接抓取正文，仅保存链接；点「编辑」可补充摘要 / 值得参考 / 如何迁移。</div></div>`;
+      } else {
+        html += `<div class="quick-add"><input id="qa-note" placeholder="此刻冒出的一个想法 / 一句话…">
+          <button class="btn sm green" data-act="add-insp-note">记录</button></div>
+          <div class="tiny muted" style="margin-top:6px">AI 会识别为灵感并给「内容方向框架」（不生成口播稿 / 标题库）。</div></div>`;
+      }
+    }
+    html += `<div style="height:10px"></div>`;
+
+    if (contentView === 'col') {
+      let list = s.content.filter((x) => x.col === contentCol && !x.kind);
+      list = sortContent(list);
+      if (!list.length) html += `<div class="empty"><span class="em">🎥</span>这个栏目还没有选题，记录第一个灵感吧。</div>`;
+      list.forEach((x) => { html += renderTopicItem(x); });
+    } else if (contentView === 'hot') {
+      const list = s.hotspots.slice().sort((a, b) => (a.rank != null ? a.rank : 99) - (b.rank != null ? b.rank : 99));
+      if (!list.length) html += `<div class="empty"><span class="em">📡</span>还没有热点。点「刷新热点」试试。</div>`;
+      list.forEach((h) => { html += renderHotItem(h); });
+    } else {
+      const list = s.content.filter((x) => x.kind === inspKind).slice().reverse();
+      if (!list.length) html += `<div class="empty"><span class="em">💡</span>${inspKind === 'link' ? '还没有保存的链接，粘贴一个试试。' : '还没有随手记录的灵感。'}</div>`;
+      list.forEach((x) => { html += renderInspItem(x); });
     }
     $('#view').innerHTML = html;
+    const ql = $('#qa-link'); if (ql) ql.onkeydown = (e) => { if (e.key === 'Enter') { const v = ql.value.trim(); if (v) { addInspLink(v, $('#qa-link-title') ? $('#qa-link-title').value.trim() : ''); ql.value = ''; const lt = $('#qa-link-title'); if (lt) lt.value = ''; } } };
+    const qn = $('#qa-note'); if (qn) qn.onkeydown = (e) => { if (e.key === 'Enter') { const v = qn.value.trim(); if (v) { addInspNote(v); qn.value = ''; } } };
     setPage('婧婧内容宇宙');
   }
+  // 选题列表：待制作等确定状态靠前，灵感排后
+  function sortContent(list) {
+    const rank = { '待制作': 0, '拍摄中': 1, '剪辑中': 2, '已发布': 3, '复盘': 4, '灵感': 5 };
+    return list.slice().sort((a, b) => {
+      const ra = rank[a.status] != null ? rank[a.status] : 5;
+      const rb = rank[b.status] != null ? rank[b.status] : 5;
+      if (ra !== rb) return ra - rb;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
+  }
+  function renderTopicItem(x) {
+    const st = x.status || '灵感';
+    const stCls = { '灵感': 's1', '待制作': 's1', '拍摄中': 's3', '剪辑中': 's3', '已发布': 's2', '复盘': 's4' }[st] || 's1';
+    return `<div class="list-item"><div class="li-top">
+      <div class="li-title">${esc(x.title)}</div><span class="badge ${stCls}">${st}</span></div>
+      <div class="li-sub">${x.source ? '来源：' + esc(x.source) + '\n' : ''}${x.idea ? '想法：' + esc(x.idea) : ''}</div>
+      ${x.direction ? renderDirection(x) : '<div class="tiny muted" style="margin-top:6px">还没有内容方向建议</div>'}
+      <div class="row-actions" style="margin-top:8px">
+        <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
+        <button class="mini" data-act="gen-dir" data-id="${x.id}">${x.direction ? '重新生成方向' : '✨ 生成方向建议'}</button>
+        <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
+  }
+  function renderHotItem(h) {
+    const colName = (COLS.find((c) => c.id === h.col) || {}).name || h.col || '—';
+    const fitCls = h.fit === '适合' ? 's2' : h.fit === '可参考' ? 's1' : 's4';
+    const linkHtml = h.link ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开来源 ↗</a>` : (h.source ? esc(h.source) : '—');
+    return `<div class="list-item hot"><div class="li-top">
+      <span class="rank">#${h.rank != null ? h.rank : '—'}</span>
+      <div class="li-title">${esc(h.topic)}</div>${h.collected ? '<span class="badge s2">已收录</span>' : ''}</div>
+      <div class="li-sub">
+        <b>来源平台：</b>${esc(h.source || '—')}　<b>热度：</b>${esc(h.heat || '—')}<br>
+        <b>为什么值得关注：</b>${esc(h.why || '—')}<br>
+        <b>链接：</b>${linkHtml}<br>
+        <b>AI 是否适合：</b><span class="badge ${fitCls}">${esc(h.fit || '—')}</span>　<b>建议栏目：</b>${esc(colName)}<br>
+        <b>如何结合：</b>${esc(h.combine || '—')}
+      </div>
+      <div class="row-actions" style="margin-top:8px">
+        ${h.collected ? '' : `<button class="mini green" data-act="collect-hot" data-id="${h.id}">收录为选题</button>`}
+        <button class="mini ghost" data-act="del-hot" data-id="${h.id}">删除</button></div></div>`;
+  }
+  function renderInspItem(x) {
+    if (x.kind === 'link') {
+      const linkHtml = x.link ? `<a class="chip link" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开链接 ↗</a>` : '';
+      const detail = `<div class="li-sub insp-detail" id="insp-${x.id}" style="display:none">
+        ${x.summary ? '<b>摘要：</b>' + esc(x.summary) + '\n' : ''}
+        ${x.refWhy ? '<b>值得参考：</b>' + esc(x.refWhy) + '\n' : ''}
+        ${x.howMigrate ? '<b>如何迁移：</b>' + esc(x.howMigrate) : ''}</div>`;
+      return `<div class="list-item insp-card"><div class="insp-left">
+        <div class="li-title">${esc(x.title)}</div>${linkHtml}</div>
+        <div class="insp-right">
+          <button class="mini ghost" data-act="toggle-insp-detail" data-id="${x.id}">展开细节</button>
+          <button class="mini" data-act="promote-insp" data-id="${x.id}">收录为选题</button>
+          <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
+          <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button>
+        </div>${detail}</div>`;
+    }
+    return `<div class="list-item"><div class="li-top">
+      <div class="li-title">${esc(x.title)}</div><span class="badge s1">灵感</span></div>
+      ${x.direction ? renderDirection(x) : ''}
+      <div class="row-actions" style="margin-top:8px">
+        <button class="mini" data-act="promote-insp" data-id="${x.id}">收录为选题</button>
+        <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
+        <button class="mini" data-act="gen-dir" data-id="${x.id}">重新生成方向</button>
+        <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
+  }
   function contentFields(it) {
-    return [
+    const fields = [
       { key: 'title', label: '标题', value: it.title, placeholder: '选题标题' },
       { key: 'col', label: '栏目', type: 'select', options: COLS.map((c) => ({ v: c.id, t: c.name })), value: it.col },
-      { key: 'series', label: '适合系列', type: 'select', options: SERIES_LIST.map((s) => ({ v: s, t: s })), value: it.series || '婧婧带你看泰国' },
       { key: 'status', label: '状态', type: 'select', options: CSTATUS.map((c) => ({ v: c, t: c })), value: it.status || '灵感' },
-      { key: 'source', label: '来源', value: it.source, placeholder: '灵感来自哪里' },
-      { key: 'idea', label: '想法', type: 'textarea', value: it.idea, placeholder: '这个选题想表达什么' },
-      { key: 'script', label: '脚本', type: 'textarea', value: it.script, placeholder: '脚本要点' },
-      { key: 'publishTime', label: '发布时间', value: it.publishTime, placeholder: '如 2026-08-10' },
-      { key: 'dataReview', label: '数据复盘', type: 'textarea', value: it.dataReview, placeholder: '发布后的数据与感受' },
+      { key: 'source', label: '来源', value: it.source, placeholder: '灵感来自哪里（可选）', hint: it.id ? '' : '想法与脚本由 AI 根据标题自动生成，无需填写。' },
     ];
+    if (it.kind === 'link') {
+      fields.push(
+        { key: 'link', label: '链接', value: it.link, placeholder: 'https://…' },
+        { key: 'summary', label: '摘要', type: 'textarea', value: it.summary, placeholder: '这条链接里值得记的要点（平台限制无法自动抓取，请手动填）' },
+        { key: 'refWhy', label: '值得参考', type: 'textarea', value: it.refWhy, placeholder: '为什么值得你参考' },
+        { key: 'howMigrate', label: '如何迁移', type: 'textarea', value: it.howMigrate, placeholder: '可以怎么变成你的内容' }
+      );
+    }
+    if (it.id) fields.push({ key: 'series', label: '适合系列', type: 'select', options: SERIES_LIST.map((s) => ({ v: s, t: s })), value: it.series || '婧婧带你看泰国', hint: 'AI 已推荐，可手动改；固定三系列，不新增。' });
+    return fields;
   }
 
   /* ============================================================
    *  热点雷达（已并入内容宇宙顶部 tab，下方函数仍保留供 case 调用）
    * ============================================================ */
+  // 脚本只给框架：开头 / 中间点 / 落点（不生成完整口播稿）
+  function genScript(title, d) {
+    return '【开头】' + (d.hook || '用一个具体场景或问题开场，3 秒内抓住注意力。') + '\n'
+      + '【中间点】' + (d.about || '讲 2–3 个具体要点，用真实细节支撑。') + '\n'
+      + '【落点】' + (d.extend || '收尾给一个行动建议或共鸣点，引导点赞收藏。');
+  }
   function genHot() {
     const s = App.state;
+    // 先移除上一批自动生成、且未被收录的热点，避免重复堆积
+    s.hotspots = s.hotspots.filter((h) => !(h.auto && !h.collected));
     const seeds = [
-      { topic: '海外教育关注持续增加', source: '留学/教育', heat: '高', why: '你的泰国+教育内容天然契合', col: 'campus' },
-      { topic: '泰国生活成本对比走红', source: '泰国', heat: '中', why: '真实体验类内容容易引发共鸣', col: 'thailand' },
-      { topic: '普通人如何做副业/轻创业', source: '商业', heat: '高', why: '与你的创业记录强相关', col: 'business' },
-      { topic: '学生/家长真实故事受欢迎', source: '人物', heat: '中', why: '「听你说」栏目素材', col: 'listens' },
+      { topic: '泰国免签政策再调整', source: '新闻', heat: '高', why: '直接影响赴泰人群，搜索量大', col: 'thailand', fit: '适合', combine: '做「最新赴泰注意事项」带你看泰国', link: 'https://top.baidu.com/board?tab=realtime' },
+      { topic: '留学生回国就业现状', source: '小红书', heat: '高', why: '家长/学生焦虑高、互动强', col: 'listens', fit: '适合', combine: '听你说：采访留学生真实感受', link: 'https://www.xiaohongshu.com/explore' },
+      { topic: '一个人去泰国生活 vlog 爆火', source: '抖音', heat: '高', why: '沉浸式内容涨粉快', col: 'thailand', fit: '适合', combine: '带你看泰国：第一视角真实生活', link: 'https://www.douyin.com/hot' },
+      { topic: '女性轻创业话题升温', source: '视频号', heat: '中', why: '女性成长受众精准', col: 'listens', fit: '适合', combine: '听你说：你的创业真实选择与理由', link: 'https://channels.weixin.qq.com/' },
+      { topic: '校园食堂暗访系列走红', source: '抖音', heat: '中', why: '学生党共鸣强', col: 'campus', fit: '可参考', combine: '带你看校园：真实食堂体验', link: 'https://www.douyin.com/hot' },
+      { topic: '泰国物价真实测评', source: '小红书', heat: '高', why: '实用信息收藏率高', col: 'thailand', fit: '适合', combine: '带你看泰国：中泰消费对比', link: 'https://www.xiaohongshu.com/explore' },
+      { topic: '高考后留学规划热', source: '知乎', heat: '中', why: '节点性强、搜索精准', col: 'campus', fit: '适合', combine: '带你看校园：留学准备清单', link: 'https://www.zhihu.com/hot' },
+      { topic: '反焦虑治愈系口播形式', source: '热梗', heat: '高', why: '形式可迁移到任意系列', col: 'listens', fit: '可参考', combine: '用治愈语气讲你的真实经历', link: 'https://www.douyin.com/hot' },
+      { topic: '中英夹杂表达在短视频走红', source: '可迁移表达方式', heat: '中', why: '人设自然、易模仿', col: 'thailand', fit: '可参考', combine: '结合你的双语背景自然表达', link: 'https://www.xiaohongshu.com/explore' },
+      { topic: '泰国旅游避坑合集', source: '抖音', heat: '高', why: '刚需、收藏高', col: 'thailand', fit: '适合', combine: '带你看泰国：避坑攻略', link: 'https://www.douyin.com/hot' },
+      { topic: '大学宿舍改造爆款', source: '小红书', heat: '中', why: '视觉化、易拍', col: 'campus', fit: '可参考', combine: '带你看校园：真实宿舍', link: 'https://www.xiaohongshu.com/explore' },
+      { topic: '学姐说人设受捧', source: '爆款形式', heat: '中', why: '贴合你的人设', col: 'listens', fit: '适合', combine: '听你说/带你看：学姐视角', link: 'https://www.bilibili.com/v/popular/rank/all' },
+      { topic: '海外生活文化差异梗', source: '热梗', heat: '中', why: '易传播', col: 'thailand', fit: '可参考', combine: '带你看泰国：文化梗', link: 'https://s.weibo.com/top/summary' },
+      { topic: '副业变现经验贴', source: '小红书', heat: '高', why: '搜索量大', col: 'listens', fit: '可参考', combine: '听你说：你的轻创业', link: 'https://www.xiaohongshu.com/explore' },
+      { topic: '泰国签证攻略长文收藏高', source: '知乎', heat: '中', why: '实用、长尾流量', col: 'thailand', fit: '适合', combine: '带你看泰国：签证攻略', link: 'https://www.zhihu.com/hot' },
+      { topic: '真实记录不加滤镜拍摄方式', source: '可借鉴拍摄方式', heat: '中', why: '真实感涨粉', col: 'campus', fit: '适合', combine: '任意系列：少包装多真实', link: 'https://www.bilibili.com/v/popular/rank/all' },
     ];
-    seeds.forEach((sd) => {
+    seeds.forEach((sd, i) => {
       const sg = suggestHot(sd.topic);
-      s.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false, suggestedTopic: sd.topic + '：' + sg.dir }, sd, { col: sd.col || sg.col }));
+      const dir = suggestDirection(sd.topic, sd.why);
+      s.hotspots.push(Object.assign(
+        { id: uid(), date: today(), collected: false, auto: true, rank: i + 1, suggestedTopic: sd.topic + '：' + dir.hook, combine: sd.combine || dir.extend, series: dir.series },
+        sd, { col: sd.col || sg.col }
+      ));
     });
-    save(); renderContent(); toast('已生成今日热点建议 📡');
+    save(); renderContent(); toast('已刷新热点库 📡');
   }
   function collectHot(id) {
     const h = App.state.hotspots.find((x) => x.id === id); if (!h) return;
-    App.state.content.push({ id: uid(), col: h.col, title: h.suggestedTopic || h.topic, status: '灵感', idea: h.why, source: h.source, createdAt: today() });
-    h.collected = true; save(); renderContent(); toast('已收藏到内容宇宙 🎬');
+    const d = suggestDirection(h.topic, h.why);
+    App.state.content.push({
+      id: uid(), col: h.col || 'thailand', title: h.topic, status: '灵感',
+      source: h.source, link: h.link || '', summary: h.why || '',
+      series: d.series, direction: d, idea: d.hook, script: genScript(h.topic, d),
+      createdAt: today()
+    });
+    h.collected = true; save(); renderContent(); toast('已收录为选题 🎬');
+  }
+  // ---- 灵感库：链接 / 随手记录（统一进入选题管理体系 s.content）----
+  function addInspLink(url, title) {
+    url = (url || '').trim(); if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    let host = url;
+    try { host = new URL(url).hostname; } catch (e) { /* 保留原串 */ }
+    App.state.content.push({ id: uid(), kind: 'link', link: url, title: title || host, summary: '', refWhy: '', howMigrate: '', status: '灵感', createdAt: today() });
+    save(); renderContent(); toast('已保存链接 🔗');
+  }
+  function addInspNote(text) {
+    text = (text || '').trim(); if (!text) return;
+    const d = suggestDirection(text, '');
+    App.state.content.push({ id: uid(), kind: 'note', title: text, status: '灵感', series: d.series, direction: d, idea: d.hook, script: genScript(text, d), createdAt: today() });
+    save(); renderContent(); toast('已记录灵感，AI 给了方向框架 💡');
+  }
+  function promoteInsp(id) {
+    const x = find(App.state.content, id); if (!x) return;
+    const d = x.direction || suggestDirection(x.title, x.idea);
+    const col = SERIES_COL[d.series] || 'thailand';
+    x.kind = undefined; x.col = col; x.series = d.series; x.direction = d; x.status = x.status || '灵感';
+    save(); renderContent(); toast('已收录为选题，进入「' + ((COLS.find((c) => c.id === col) || {}).name || col) + '」🎬');
   }
 
   /* ============================================================
@@ -1070,8 +1201,13 @@
       case 'confirm-insp': confirmInsp(id); break;
       case 'del-insp': if (trashItem('inspirations', id, 'inspiration')) { save(); renderInspiration(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
-      case 'content-tab': contentView = id; if (id === 'hot') { App.state.hotspots.forEach((h) => { h.read = true; }); } renderContent(); break;
+      case 'content-tab': contentView = id; if (id === 'hot') { App.state.hotspots.forEach((h) => { h.read = true; }); if (!App.state.hotspots.length) genHot(); } renderContent(); break;
       case 'filter-content': contentCol = id; contentView = 'col'; renderContent(); break;
+      case 'insp-sub': inspKind = id; renderContent(); break;
+      case 'add-insp-link': { const u = $('#qa-link'), t = $('#qa-link-title'); addInspLink(u ? u.value : '', t ? t.value : ''); if (u) u.value = ''; if (t) t.value = ''; break; }
+      case 'add-insp-note': { const n = $('#qa-note'); if (n) { addInspNote(n.value); n.value = ''; } break; }
+      case 'toggle-insp-detail': { const el = document.getElementById('insp-' + id); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; break; }
+      case 'promote-insp': promoteInsp(id); break;
       case 'add-content': editContent(null); break;
       case 'edit-content': editContent(id); break;
       case 'del-content': if (trashItem('content', id, 'content')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -1176,7 +1312,7 @@
         Object.assign(x, fd);
       } else {
         const d = suggestDirection(fd.title, fd.idea);
-        App.state.content.push(Object.assign({ id: uid(), createdAt: today() }, fd, { series: d.series, direction: d }));
+        App.state.content.push(Object.assign({ id: uid(), createdAt: today() }, fd, { series: d.series, direction: d, idea: d.hook, script: genScript(fd.title, d) }));
       }
       save(); renderContent();
     });

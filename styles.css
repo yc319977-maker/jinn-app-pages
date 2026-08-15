@@ -329,3 +329,20 @@ header.topbar {
   font-size: 13.5px; z-index: 200; opacity: 0; transition: opacity .25s, bottom .25s; pointer-events: none;
 }
 .toast.show { opacity: .95; bottom: 100px; }
+
+/* ---- 内容宇宙：热点雷达 / 灵感库 增强 ---- */
+.chip.link { display: inline-block; background: #E8F0F6; color: #3E7CA0; border: 1px solid #CFE2EE; padding: 2px 10px; border-radius: 20px; font-size: 12px; text-decoration: none; }
+.chip.link:hover { background: #D7E8F2; }
+.list-item.hot { border-left: 3px solid var(--terra); }
+.rank { font-weight: 800; color: var(--terra); font-size: 15px; min-width: 26px; text-align: center; }
+.insp-card { display: flex; align-items: flex-start; gap: 10px; }
+.insp-left { flex: 1; min-width: 0; }
+.insp-left .li-title { margin-bottom: 4px; }
+.insp-right { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; align-items: flex-end; }
+.insp-right .mini { width: 100%; min-width: 84px; text-align: center; }
+.insp-detail { margin-top: 8px; padding: 8px 10px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 10px; }
+@media (max-width: 540px) {
+  .insp-card { flex-direction: column; }
+  .insp-right { flex-direction: row; flex-wrap: wrap; width: 100%; }
+  .insp-right .mini { width: auto; min-width: 0; }
+}

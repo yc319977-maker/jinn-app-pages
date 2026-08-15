@@ -206,6 +206,77 @@
     else if (t.includes('商业') || t.includes('创业') || t.includes('机会')) { col = 'business'; dir = '拆解一个你观察到的商业现象，给出普通人能用的判断。'; }
     return { col, dir };
   }
+  /* ---------------- 选题栏目：AI 内容方向建议（本地启发式） ---------------- */
+  const SERIES_LIST = ['婧婧听你说', '婧婧带你看泰国', '婧婧带你看校园'];
+  // 在三个固定系列中自动匹配最合适的（用户可在编辑里手动改，不自动扩张新系列）
+  function matchSeries(text) {
+    const t = (text || '').toLowerCase();
+    if (/(最重要|重要|值不值得|怎么选|重新选择|感悟|观点|看法|经历|故事|学姐|公司|团队|创业|商业|成长|女性|听你说|你还会|如果.*选|为什么.*选|纠结)/.test(t)) return '婧婧听你说';
+    if (/(上课|大学|校园|开学|宿舍|专业|作业|考试|真实上课|食堂|图书馆|教学楼)/.test(t)) return '婧婧带你看校园';
+    if (/(泰国|生活|踩坑|注意|避坑|攻略|美食|旅游|签证|电话卡|现金|交通|住宿|消费|物价|文化差异)/.test(t)) return '婧婧带你看泰国';
+    if (/(留学|学生|教育|升学)/.test(t)) return '婧婧带你看校园';
+    return '婧婧带你看泰国';
+  }
+  // 输入一个粗糙想法，产出「内容骨架」（1-5 基础框架 + 可选 1 个补充方向），不生成成稿
+  function suggestDirection(title, idea) {
+    const raw = (title || '') + ' ' + (idea || '');
+    const t = raw.toLowerCase();
+    const series = matchSeries(raw);
+    const th = /(泰国|生活|踩坑|注意|避坑|攻略|美食|旅游|签证|电话卡|现金|交通|住宿|消费|物价|文化差异)/.test(t);
+    const ab = /(留学|开学|准备|升学|学生|教育)/.test(t);
+    const cm = /(校园|大学|上课|宿舍|专业|作业|考试)/.test(t);
+    const biz = /(公司|团队|创业|商业|项目|生意)/.test(t);
+    const topic = (title || '这个想法');
+    let hook, about, shoot, extend, extra = '', extraLabel = '';
+    if (th) {
+      hook = '第一次来泰国最容易忽略、却直接影响体验的生活细节，用你亲历的真实踩坑讲最有用。';
+      about = '交通怎么坐最省心、现金和移动支付怎么搭配、电话卡和上网怎么办、住宿避坑、签证与落地注意事项、日常消费真实水平。';
+      shoot = '学姐第一视角，直接列出几个真实踩坑点，边走边讲、结合实地画面最有说服力。';
+      extend = '第一次来泰国、留学生避坑、家长最担心的问题、泰国 vs 国内生活对比。';
+    } else if (cm) {
+      hook = '把「校园 / 大学真实样子」拍出来，破除想象，让人身临其境。';
+      about = '真实上课是什么样、宿舍和食堂体验、作业和考试节奏、社团和实践、和国内大学的差异。';
+      shoot = '走进真实场景拍（教室 / 宿舍 / 食堂 / 校园），用 vlog 或一镜到底呈现日常，比口播更可信。';
+      extend = '泰国大学真实生活、留学生适应、家长视角的择校、中外教育差异。';
+    } else if (ab) {
+      hook = '把「留学 X」拆成普通家庭 / 学生真正会遇到的具体决策，不做空泛说教。';
+      about = '选校和专业的真实考量、出国前要做哪些准备、语言和生活能力怎么补、社交和实践机会怎么抓、家长最担心什么。';
+      shoot = '以「如果重新来一次，我最看重什么」切入，用过来人语气分享。';
+      extend = '出国前准备清单、留学值不值得、家长最在意什么、学生最容易忽略什么。';
+    } else if (biz) {
+      hook = '用一个真实发生的小事 / 转折点开篇，把你的判断和背后的理由讲清楚。';
+      about = '这件事里最有意思的一个变化、你当时怎么决定的、踩过的坑、普通人能借鉴什么。';
+      shoot = '坐下来聊天式口播，像跟朋友讲一个真实选择和背后的理由，真诚一点。';
+      extend = '创业 / 团队管理 / 女性成长角度都可延伸，但系列仍归到你的固定栏目。';
+    } else {
+      hook = '从「' + topic + '」切入，抓住观众最关心的真实痛点，用你亲历的细节把抽象话题讲具体。';
+      about = '围绕「' + topic + '」，拆成 2–3 个具体侧面（是什么 / 为什么重要 / 你自己的真实做法），避免一上来就讲大道理。';
+      shoot = '用你最自然的方式讲——学姐视角、真实经历、少修饰，比精致包装更打动人。';
+      extend = '同一主题的更多角度、听众自己的故事、可以做成系列的几集方向。';
+    }
+    if (/(担心|焦虑|坑|难|怕|纠结|怕踩)/.test(t)) { extra = '用户痛点：把「大家最怕踩的坑 / 最纠结的点」单独拎出来讲，评论区会很有互动。'; extraLabel = '用户痛点'; }
+    else if (/(最近|爆|火|热|刷到|热议)/.test(t)) { extra = '可结合热点：蹭一个近期相关话题，借势提高曝光，但别忘了保留你的真实视角。'; extraLabel = '可结合热点'; }
+    else if (/(案例|真实|经历|故事|亲历)/.test(t)) { extra = '可加入的真实案例：用一个你亲历的具体小事当主线，比罗列观点更抓人。'; extraLabel = '可加入的真实案例'; }
+    else if (/(家长|学生|女生|女性|小白|新手|普通人)/.test(t)) { extra = '目标受众：开头一句话点明「这条是讲给谁听的」，让家长 / 学生 / 小白一眼觉得和自己有关。'; extraLabel = '目标受众'; }
+    return { hook: hook, about: about, shoot: shoot, series: series, extend: extend, extra: extra, extraLabel: extraLabel };
+  }
+  function renderDirection(x) {
+    const d = x.direction; if (!d) return '';
+    const pts = [];
+    pts.push('1. 核心切入：' + esc(d.hook));
+    pts.push('2. 可以讲什么：' + esc(d.about));
+    pts.push('3. 拍摄方式：' + esc(d.shoot));
+    pts.push('4. 适合系列：' + esc(x.series || d.series));
+    pts.push('5. 延伸方向：' + esc(d.extend));
+    if (d.extra) pts.push('6. ' + esc(d.extraLabel || '补充方向') + '：' + esc(d.extra));
+    return '<div class="dir-box"><div class="dir-h">【内容方向建议】</div>' + pts.join('') + '</div>';
+  }
+  function genDir(id) {
+    const x = App.state.content.find((c) => c.id === id); if (!x) return;
+    x.direction = suggestDirection(x.title, x.idea);
+    x.series = x.direction.series;
+    save(); renderContent(); toast('已生成内容方向建议 ✨');
+  }
 
   /* ============================================================
    *  渲染：今日工作台
@@ -505,7 +576,7 @@
     let html = `<div class="card"><h3>🎬 婧婧内容宇宙 <span class="tag">${contentView === 'hot' ? '热点雷达' : COLS.find((c) => c.id === contentCol).name}</span></h3>
       <div class="tabs">${topTabs}</div>
       ${contentView === 'col' ? `<div class="tabs">${colTabs}</div>
-      <button class="btn sm" data-act="add-content">+ 新建选题</button>` : `<div class="tiny muted" style="margin-bottom:10px">提示：连接数据源后可每日自动整理。当前支持手动收录 + AI 方向建议（本地启发式）。</div>
+      <button class="btn sm green" data-act="add-content">+ 新建选题</button>` : `<div class="tiny muted" style="margin-bottom:10px">提示：连接数据源后可每日自动整理。当前支持手动收录 + AI 方向建议（本地启发式）。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" data-act="gen-hot">✨ AI 给方向建议</button>
         <button class="btn soft sm" data-act="add-hot">+ 收录热点</button>
@@ -521,8 +592,10 @@
           <div class="li-title">${esc(x.title)}</div><span class="badge ${stCls}">${st}</span></div>
           <div class="li-sub">${x.source ? '来源：' + esc(x.source) + '\n' : ''}${x.idea ? '想法：' + esc(x.idea) + '\n' : ''}
           ${x.publishTime ? '发布：' + esc(x.publishTime) + '　' : ''}${x.dataReview ? '复盘：' + esc(x.dataReview) : ''}</div>
+          ${x.direction ? renderDirection(x) : '<div class="tiny muted" style="margin-top:6px">还没有内容方向建议</div>'}
           <div class="row-actions" style="margin-top:8px">
             <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
+            <button class="mini" data-act="gen-dir" data-id="${x.id}">${x.direction ? '重新生成方向' : '✨ 生成方向建议'}</button>
             <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
       });
     } else {
@@ -546,6 +619,7 @@
     return [
       { key: 'title', label: '标题', value: it.title, placeholder: '选题标题' },
       { key: 'col', label: '栏目', type: 'select', options: COLS.map((c) => ({ v: c.id, t: c.name })), value: it.col },
+      { key: 'series', label: '适合系列', type: 'select', options: SERIES_LIST.map((s) => ({ v: s, t: s })), value: it.series || '婧婧带你看泰国' },
       { key: 'status', label: '状态', type: 'select', options: CSTATUS.map((c) => ({ v: c, t: c })), value: it.status || '灵感' },
       { key: 'source', label: '来源', value: it.source, placeholder: '灵感来自哪里' },
       { key: 'idea', label: '想法', type: 'textarea', value: it.idea, placeholder: '这个选题想表达什么' },
@@ -1003,6 +1077,7 @@
       case 'del-content': if (trashItem('content', id, 'content')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'gen-hot': genHot(); break;
+      case 'gen-dir': genDir(id); break;
       case 'add-hot': editHot(null); break;
       case 'collect-hot': collectHot(id); break;
       case 'del-hot': if (trashItem('hotspots', id, 'other')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -1097,7 +1172,12 @@
   function editContent(id) {
     const x = id ? find(App.state.content, id) : { col: contentCol, status: '灵感' };
     openForm(id ? '编辑选题' : '新建选题', contentFields(x), null, (fd) => {
-      if (id) Object.assign(x, fd); else App.state.content.push(Object.assign({ id: uid(), createdAt: today() }, fd));
+      if (id) {
+        Object.assign(x, fd);
+      } else {
+        const d = suggestDirection(fd.title, fd.idea);
+        App.state.content.push(Object.assign({ id: uid(), createdAt: today() }, fd, { series: d.series, direction: d }));
+      }
       save(); renderContent();
     });
   }

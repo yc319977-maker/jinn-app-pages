@@ -90,15 +90,15 @@
   function navCounts() {
     const s = App.state;
     const td = today();
-    // 内容宇宙气泡：未读热点（点进看过即标记 read） + 还没处理的选题（状态为「灵感」）
-    const unreadHot = s.hotspots.filter((h) => !h.collected && !h.read).length;
-    const freshIdea = s.content.filter((c) => c.status === '灵感').length;
+    // 内容宇宙气泡：只统计「真正需要拍的内容」= 状态为「待制作」的选题
+    // （不统计热点数量 / 灵感数量 / 链接数量 / 已发布数量 / 其他内容数量）
+    const toShoot = s.content.filter((c) => c.status === '待制作').length;
     return {
       today: s.tasks.filter((t) => !t.canceled && t.date <= td && !t.done).length,
       month: 0,
       growth: 0,
       inspiration: 0,
-      content: unreadHot + freshIdea,
+      content: toShoot,
       crm: 0,
       ecom: 0,
       self: 0,
@@ -108,8 +108,16 @@
   }
 
   function setPage(title) { $('#pageTitle').textContent = title; }
+  // 记住当前浏览位置（模块 + 内容宇宙子视图），刷新后恢复，不跳回首页
+  function saveView() {
+    try {
+      localStorage.setItem('sb_view', JSON.stringify({
+        current: App.current, contentView: contentView, contentCol: contentCol, inspKind: inspKind
+      }));
+    } catch (e) { /* localStorage 不可用时忽略 */ }
+  }
   function navigate(id) {
-    App.current = id; renderNav(); render();
+    App.current = id; renderNav(); render(); saveView();
     const m = MODULES.find((x) => x.id === id);
     if (m) setPage(m.name);
     window.scrollTo(0, 0);
@@ -129,6 +137,13 @@
       if (f.type === 'textarea') ctrl = `<textarea name="${f.key}" placeholder="${esc(f.placeholder || '')}">${esc(v)}</textarea>`;
       else if (f.type === 'select') ctrl = `<select name="${f.key}">` + (f.options || []).map((o) =>
         `<option value="${esc(o.v)}" ${o.v === v ? 'selected' : ''}>${esc(o.t)}</option>`).join('') + `</select>`;
+      else if (f.type === 'series') ctrl = `<div class="series-picker">` + (f.options || SERIES_LIST).map((o) => {
+        const sname = o.v != null ? o.v : o, slabel = o.t != null ? o.t : o, m = SERIES_META[sname] || {};
+        const sel = (sname === v) ? 'checked' : '';
+        return `<label class="series-opt ${sel}" style="--sc:${m.color || '#9DB8C9'};--sb:${m.bg || '#eef2f5'}">
+          <input type="radio" name="${f.key}" value="${esc(sname)}" ${sel}>
+          <span class="series-ic">${m.icon || '🎬'}</span><span>${esc(slabel)}</span></label>`;
+      }).join('') + `</div>`;
       else ctrl = `<input name="${f.key}" type="${f.type || 'text'}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}">`;
       return `<div class="field"><label>${esc(f.label)}</label>${ctrl}${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}</div>`;
     }).join('');
@@ -217,85 +232,113 @@
     if (/(留学|学生|教育|升学)/.test(t)) return '婧婧带你看校园';
     return '婧婧带你看泰国';
   }
-  // 输入一个粗糙想法，产出「内容骨架」（1-5 基础框架 + 可选 1 个补充方向），不生成成稿
+  // 输入一个粗糙想法 / 具体标题，产出「内容骨架」（不生成成稿）。
+  // 关键铁律：所有内容都必须【绑定到这个具体标题本身】，禁止「可以结合XX」之类泛话。
+  // 纯本地启发式、无联网、无法获取平台真实视频 → 结论里明确说明，绝不编造。
+  // 链接灵感自动分析：基于抓到的标题/简介，给出「为什么值得参考 / 怎么迁移」（锚定到具体标题）
+  function buildInspAnalysis(title, desc, platform, series) {
+    const topic = (title || '').trim() || '这条链接';
+    const why = '「' + topic + '」——你「' + series + '」已有的真实经验正好能接住它：从你亲历的一个具体场景讲起，比泛泛而谈更可信。'
+      + (desc ? '（链接里提到：' + desc.slice(0, 60) + (desc.length > 60 ? '…' : '') + '）' : '');
+    const how = '把「' + topic + '」变成你的内容：① 用你自己的口吻重讲一遍（别照搬）；② 补一个你亲历的真实细节 / 反转；③ 落到「' + series + '」能持续做的方向，做成小系列。';
+    return { why: why, how: how };
+  }
+  // 去掉常见虚词，提取标题里有信息量的「焦点词」，让建议真正围绕这个话题本身
+  function focusWord(title) {
+    const t = (title || '').replace(/(怎么|如何|为什么|吗|呢|啊|吧|的|了|是|一个|可以|应该|需要|攻略|合集|测评|走红|爆火|升温|热|现状|真实|记录|分享|看看|带你看|听你说)/g, '');
+    return (t.trim() || (title || '')).slice(0, 12);
+  }
   function suggestDirection(title, idea) {
     const raw = (title || '') + ' ' + (idea || '');
     const t = raw.toLowerCase();
+    const topic = (title || '').trim() || '这个想法';
     const series = matchSeries(raw);
-    const th = /(泰国|生活|踩坑|注意|避坑|攻略|美食|旅游|签证|电话卡|现金|交通|住宿|消费|物价|文化差异)/.test(t);
-    const ab = /(留学|开学|准备|升学|学生|教育)/.test(t);
-    const cm = /(校园|大学|上课|宿舍|专业|作业|考试)/.test(t);
-    const biz = /(公司|团队|创业|商业|项目|生意)/.test(t);
-    const topic = (title || '这个想法');
-    let hook, about, shoot, extend, extra = '', extraLabel = '';
-    if (th) {
-      hook = '第一次来泰国最容易忽略、却直接影响体验的生活细节，用你亲历的真实踩坑讲最有用。';
-      about = '交通怎么坐最省心、现金和移动支付怎么搭配、电话卡和上网怎么办、住宿避坑、签证与落地注意事项、日常消费真实水平。';
-      shoot = '学姐第一视角，直接列出几个真实踩坑点，边走边讲、结合实地画面最有说服力。';
-      extend = '第一次来泰国、留学生避坑、家长最担心的问题、泰国 vs 国内生活对比。';
-    } else if (cm) {
-      hook = '把「校园 / 大学真实样子」拍出来，破除想象，让人身临其境。';
-      about = '真实上课是什么样、宿舍和食堂体验、作业和考试节奏、社团和实践、和国内大学的差异。';
-      shoot = '走进真实场景拍（教室 / 宿舍 / 食堂 / 校园），用 vlog 或一镜到底呈现日常，比口播更可信。';
-      extend = '泰国大学真实生活、留学生适应、家长视角的择校、中外教育差异。';
-    } else if (ab) {
-      hook = '把「留学 X」拆成普通家庭 / 学生真正会遇到的具体决策，不做空泛说教。';
-      about = '选校和专业的真实考量、出国前要做哪些准备、语言和生活能力怎么补、社交和实践机会怎么抓、家长最担心什么。';
-      shoot = '以「如果重新来一次，我最看重什么」切入，用过来人语气分享。';
-      extend = '出国前准备清单、留学值不值得、家长最在意什么、学生最容易忽略什么。';
-    } else if (biz) {
-      hook = '用一个真实发生的小事 / 转折点开篇，把你的判断和背后的理由讲清楚。';
-      about = '这件事里最有意思的一个变化、你当时怎么决定的、踩过的坑、普通人能借鉴什么。';
-      shoot = '坐下来聊天式口播，像跟朋友讲一个真实选择和背后的理由，真诚一点。';
-      extend = '创业 / 团队管理 / 女性成长角度都可延伸，但系列仍归到你的固定栏目。';
-    } else {
-      hook = '从「' + topic + '」切入，抓住观众最关心的真实痛点，用你亲历的细节把抽象话题讲具体。';
-      about = '围绕「' + topic + '」，拆成 2–3 个具体侧面（是什么 / 为什么重要 / 你自己的真实做法），避免一上来就讲大道理。';
-      shoot = '用你最自然的方式讲——学姐视角、真实经历、少修饰，比精致包装更打动人。';
-      extend = '同一主题的更多角度、听众自己的故事、可以做成系列的几集方向。';
-    }
-    if (/(担心|焦虑|坑|难|怕|纠结|怕踩)/.test(t)) { extra = '用户痛点：把「大家最怕踩的坑 / 最纠结的点」单独拎出来讲，评论区会很有互动。'; extraLabel = '用户痛点'; }
-    else if (/(最近|爆|火|热|刷到|热议)/.test(t)) { extra = '可结合热点：蹭一个近期相关话题，借势提高曝光，但别忘了保留你的真实视角。'; extraLabel = '可结合热点'; }
-    else if (/(案例|真实|经历|故事|亲历)/.test(t)) { extra = '可加入的真实案例：用一个你亲历的具体小事当主线，比罗列观点更抓人。'; extraLabel = '可加入的真实案例'; }
-    else if (/(家长|学生|女生|女性|小白|新手|普通人)/.test(t)) { extra = '目标受众：开头一句话点明「这条是讲给谁听的」，让家长 / 学生 / 小白一眼觉得和自己有关。'; extraLabel = '目标受众'; }
+    const voice = {
+      '婧婧带你看泰国': '你就在泰国，用第一视角讲真实发生的事',
+      '婧婧带你看校园': '你就在校园 / 留学场景里，直接拍真实样子',
+      '婧婧听你说': '用「听你说」的方式，让人开口讲自己的真实故事'
+    }[series] || '用你最自然的口吻讲真实经历';
+    const focus = focusWord(topic);
+    const hasList = /(合集|清单|测评|盘点|避坑|攻略|对比|top|排行|种草|红黑)/.test(t);
+    const hasStory = /(故事|经历|选择|采访|学姐|创业|真实|我|他|她)/.test(t);
+    const hasVlog = /(vlog|生活|日常|一天|沉浸式|记录|探店|逛)/.test(t);
+    let format;
+    if (hasList) format = '分点清单 / 信息密度型——封面大字点明「' + focus + '」能解决什么，每条给一个你的真实判断';
+    else if (hasStory) format = '口播 + 真实故事——开头直接抛一个关于「' + focus + '」的具体抉择或场景';
+    else if (hasVlog) format = '第一视角 vlog——前 3 秒出现「' + focus + '」相关的真实生活画面';
+    else format = '混合结构——前 3 秒给一个关于「' + focus + '」的反常识判断，中段讲清楚为什么';
+    const hook = '开头就点「' + topic + '」，别绕弯子。用一句话把人拉进来：比如「我最近被「' + focus + '」这件事卡住了 / 身边刚发生一件关于它的真事」。' + voice + '。';
+    const about = [
+      '先讲清「' + topic + '」里大家最懵的一点：用你亲历的例子讲，别只下结论。',
+      hasList
+        ? '直接上「' + focus + '」的几个具体项，每项给一个你自己的真实判断，不只会罗列。'
+        : '拆成 2–3 个具体侧面（是什么 / 为什么重要 / 你自己的真实做法），每个都落到「' + focus + '」上。',
+      '结尾给一个观众今天就能用的小动作，或留一个开放问题引导评论。'
+    ].join('\n');
+    const shoot = '拍摄：' + format + '。' + voice + '，少精致包装、多放真实画面（' + (hasVlog ? '边走边讲、结合实地' : '对着镜头像跟朋友聊') + '）。前 3 秒必须出现「' + focus + '」相关钩子。';
+    const extend = [
+      '「' + focus + '」的避坑版：把上面的点反过来讲最易踩的坑',
+      '「' + focus + '」的进阶版：一个真实案例从头到尾走一遍',
+      '同系列联动：把「' + topic + '」和你另一期「' + series + '」串成小系列'
+    ].join('；');
+    let extra = '', extraLabel = '';
+    if (/(担心|焦虑|坑|难|怕|纠结|踩)/.test(t)) { extra = '用户痛点：把「大家最怕踩的坑 / 最纠结的「' + focus + '」」单独拎出来讲，评论区会很有互动。'; extraLabel = '用户痛点'; }
+    else if (/(最近|爆|火|热|刷到|热议)/.test(t)) { extra = '可借势：借「' + topic + '」近期热度提高曝光，但保留你的真实视角；平台限制无法自动取到具体视频，点开原链接看别人怎么拍，再换成你的口吻。'; extraLabel = '可结合热点'; }
+    else if (/(案例|真实|经历|故事|亲历)/.test(t)) { extra = '真实案例：用你亲历的一个关于「' + focus + '」的具体小事当主线，比罗列观点更抓人。'; extraLabel = '可加入的真实案例'; }
+    else if (/(家长|学生|女生|女性|小白|新手|普通人)/.test(t)) { extra = '目标受众：开头一句点明「这条是讲给谁听的（关于「' + focus + '」）」，让家长 / 学生 / 小白一眼觉得和自己有关。'; extraLabel = '目标受众'; }
     return { hook: hook, about: about, shoot: shoot, series: series, extend: extend, extra: extra, extraLabel: extraLabel };
   }
-  // 内容方向建议：统一六段格式，默认折叠（长内容折叠，编号单独换行）
+  // 内容方向建议：统一格式，默认折叠。明确四段：这个话题 → 别人常见怎么做（诚实说明无法自动取视频）→ 我可以怎么借 → 我可以拍成什么
   function renderDirection(x) {
     const d = x.direction; if (!d) return '';
     const series = x.series || d.series || '婧婧带你看泰国';
-    const core = d.hook || '从真实场景切入，抓住观众最关心的痛点。';
-    const why = d.about || '围绕主题拆成几个具体侧面，用你亲历的细节讲具体。';
-    const combine = [
-      '从一个你亲历的具体场景或问题开场，不空泛说教。',
-      '借一个真实细节或反差对比，让人一下觉得和自己有关。',
-      d.extend ? ('延伸到：' + d.extend) : '收尾给一个可执行建议或开放问题，引导评论。'
-    ];
-    const shoot = [
-      d.shoot || '用你最自然的方式讲——学姐视角、真实经历、少修饰。',
-      '配合第一视角实拍 / 真实画面，比精致包装更可信。',
-      '前 3 秒给钩子，结尾留一个互动问题引导收藏评论。'
-    ];
-    const myAngle = (d.extra ? ('补充：' + d.extra) : '') || ('从你「' + series + '」的身份出发，讲你最真实的一次经历。');
+    const topic = (x.title || '').trim() || '这个想法';
+    const hook = d.hook || ('从「' + topic + '」切入，抓住观众最关心的真实痛点。');
+    const about = d.about || ('围绕「' + topic + '」拆成几个具体侧面，用你亲历的细节讲具体。');
+    const shoot = d.shoot || '用你最自然的方式讲——学姐视角、真实经历、少修饰。';
     const extend = d.extend || '同一主题的更多角度、听众自己的故事、可做成系列的几集方向。';
+    const refOther = '平台限制无法自动获取具体视频，请点开原链接看别人怎么拍；可重点学它的【开头钩子 / 中段结构 / 结尾留互动】，再换成你的口吻，不要照搬。';
+    const myAngle = d.extra ? ('【' + (d.extraLabel || '补充') + '】' + d.extra) : ('从你「' + series + '」的身份出发，讲你最真实的一次经历。');
     const open = App.folds['dir-' + x.id] ? 'open' : '';
     return `<div class="fold ${open}">
       <div class="fold-head" data-act="fold" data-target="dir-${x.id}"><span class="arrow">▸</span><span class="fold-t">内容方向建议（点击展开）</span></div>
       <div class="fold-body"><div class="dir-box">
-        <div class="dir-seg"><b>【核心判断】</b>${esc(core)}</div>
-        <div class="dir-seg"><b>【为什么值得参考】</b>${esc(why)}</div>
-        <div class="dir-seg"><b>【可以怎么结合】</b><br>1. ${esc(combine[0])}<br>2. ${esc(combine[1])}<br>3. ${esc(combine[2])}</div>
-        <div class="dir-seg"><b>【参考拍摄方式】</b><br>1. ${esc(shoot[0])}<br>2. ${esc(shoot[1])}<br>3. ${esc(shoot[2])}</div>
+        <div class="dir-seg"><b>【这个话题】</b>${esc(topic)}</div>
+        <div class="dir-seg"><b>【别人常见怎么做】</b>${esc(refOther)}</div>
+        <div class="dir-seg"><b>【我可以怎么借】</b>${esc(hook)}</div>
+        <div class="dir-seg"><b>【我可以拍成什么】</b>${esc(about)}</div>
+        <div class="dir-seg"><b>【参考拍摄方式】</b>${esc(shoot)}</div>
         <div class="dir-seg"><b>【我的内容切入】</b>${esc(myAngle)}</div>
-        <div class="dir-seg"><b>【推荐系列】</b>${esc(series)}</div>
+        <div class="dir-seg"><b>【推荐系列】</b>${renderSeriesTag(series)}</div>
         <div class="dir-seg"><b>【延伸选题】</b>${esc(extend)}</div>
       </div></div></div>`;
   }
+  // 重新生成方向：不直接覆盖旧版。生成「新版本」与「当前版本」并列对比，由用户选「使用新版 / 保留旧版」。
+  // 旧版会留存（最多保留最近 3 个历史版本），当前版本不会因误触消失。
   function genDir(id) {
     const x = App.state.content.find((c) => c.id === id); if (!x) return;
-    x.direction = suggestDirection(x.title, x.idea);
-    x.series = x.direction.series;
-    save(); renderContent(); toast('已生成内容方向建议 ✨');
+    const cur = x.direction || suggestDirection(x.title, x.idea);
+    const nv = suggestDirection(x.title, x.idea);
+    const cmp = (label, a, b) => `<div class="vd-col"><div class="vd-h">${label}</div><div class="vd-old">${esc(a || '（无）')}</div><div class="vd-new">${esc(b)}</div></div>`;
+    showModal(`<h3>✨ 生成内容方向（新版本）</h3>
+      <div class="tiny muted" style="margin-bottom:10px">不会直接覆盖旧版：对比后选「使用新版」或「保留旧版」。旧版已留存，可随时再次生成替换。</div>
+      <div class="vd-box">
+        ${cmp('核心判断（我可以怎么借）', cur.hook, nv.hook)}
+        ${cmp('可以拍成什么', cur.about, nv.about)}
+        ${cmp('参考拍摄方式', cur.shoot, nv.shoot)}
+        ${cmp('推荐系列', cur.series || '—', nv.series)}
+        ${cmp('延伸选题', cur.extend, nv.extend)}
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-act="close-modal">保留旧版</button>
+        <button class="btn" id="useNewDir">使用新版</button>
+      </div>`);
+    modalBox.querySelector('#useNewDir').onclick = () => {
+      x.directionVersions = [{ hook: cur.hook, about: cur.about, shoot: cur.shoot, series: cur.series, extend: cur.extend, ts: Date.now() }].concat(x.directionVersions || []).slice(0, 3);
+      x.direction = nv; x.series = nv.series; x.col = SERIES_COL[nv.series] || x.col;
+      save(); closeModal(); renderContent();
+      toast('已用新版本替换，旧版已留存可回看 🔁');
+    };
   }
 
   /* ============================================================
@@ -584,6 +627,23 @@
   ];
   // 系列名 → 栏目 id（AI 推荐方向后自动归入对应栏目）
   const SERIES_COL = { '婧婧听你说': 'listens', '婧婧带你看泰国': 'thailand', '婧婧带你看校园': 'campus' };
+  // 反查：旧数据 col(id) → 系列中文名（兼容无 series 字段的旧记录，不丢数据）
+  const COL_TO_SERIES = { listens: '婧婧听你说', thailand: '婧婧带你看泰国', campus: '婧婧带你看校园' };
+  // 三个固定系列的视觉识别（名称 + 图标 + 颜色），全内容宇宙所有出现位置统一使用
+  const SERIES_META = {
+    '婧婧听你说':   { id: 'listens', icon: '💬', color: '#7A5C92', bg: '#F3ECF7' },
+    '婧婧带你看泰国': { id: 'thailand', icon: '🌴', color: '#C77B3E', bg: '#FDEFE0' },
+    '婧婧带你看校园': { id: 'campus', icon: '🎓', color: '#3E7CA0', bg: '#E8F0F6' },
+  };
+  function seriesId(name) { return (SERIES_META[name] || {}).id || SERIES_COL[name] || 'thailand'; }
+  function seriesOf(x) { return (x && x.series) || (x && COL_TO_SERIES[x.col]) || '婧婧带你看泰国'; }
+  function seriesIcon(name) { return (SERIES_META[name] || {}).icon || '🎬'; }
+  function seriesColor(name) { return (SERIES_META[name] || {}).color || '#9DB8C9'; }
+  function seriesBg(name) { return (SERIES_META[name] || {}).bg || '#eef2f5'; }
+  function renderSeriesTag(name) {
+    const m = SERIES_META[name] || {};
+    return `<span class="series-tag" style="color:${m.color || '#9DB8C9'};background:${m.bg || '#eef2f5'}">${m.icon || '🎬'} ${esc(name)}</span>`;
+  }
   const CSTATUS = ['灵感', '待制作', '拍摄中', '剪辑中', '已发布', '复盘'];
   let contentCol = 'thailand';
   let contentView = 'col'; // 'col' 选题栏目 / 'hot' 热点雷达 / 'insp' 灵感库
@@ -592,7 +652,7 @@
     const s = App.state;
     const colTabs = COLS.map((c) => `<button class="tab ${contentView === 'col' && c.id === contentCol ? 'active' : ''}" data-act="filter-content" data-id="${c.id}">${c.name}</button>`).join('');
     const topTabs = `<button class="tab ${contentView === 'col' ? 'active' : ''}" data-act="content-tab" data-id="col">🎬 选题栏目</button>
-      <button class="tab ${contentView === 'hot' ? 'active' : ''}" data-act="content-tab" data-id="hot">📡 热点雷达</button>
+      <button class="tab ${contentView === 'hot' ? 'active' : ''}" data-act="content-tab" data-id="hot">📡 热点雷达${s.hotspots.length ? ' ' + s.hotspots.length : ''}</button>
       <button class="tab ${contentView === 'insp' ? 'active' : ''}" data-act="content-tab" data-id="insp">💡 灵感库</button>`;
 
     const tag = contentView === 'hot' ? '热点雷达' : contentView === 'insp' ? '灵感库' : COLS.find((c) => c.id === contentCol).name;
@@ -603,7 +663,8 @@
       html += `<div class="tabs">${colTabs}</div>
       <button class="btn sm green" data-act="add-content">+ 新建选题</button></div>`;
     } else if (contentView === 'hot') {
-      html += `<div class="tiny muted" style="margin-bottom:10px">提示：自动抓取需联网数据源（当前平台限制，使用本地热点库 + AI 方向建议）。点「刷新热点」更新本地库。</div>
+      const todayCount = s.hotspots.filter((h) => h.date === today()).length;
+      html += `<div class="tiny muted" style="margin-bottom:8px">今日已更新 <b>${todayCount}</b> 条热点　·　点「刷新热点」不会重复生成（已自动按话题去重）。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm green" data-act="gen-hot">🔄 刷新热点</button>
         <button class="btn soft sm" data-act="add-hot">+ 收录热点</button>
@@ -626,9 +687,9 @@
     html += `<div style="height:10px"></div>`;
 
     if (contentView === 'col') {
-      let list = s.content.filter((x) => x.col === contentCol && !x.kind);
+      let list = s.content.filter((x) => seriesId(seriesOf(x)) === contentCol && !x.kind);
       list = sortContent(list);
-      if (!list.length) html += `<div class="empty"><span class="em">🎥</span>这个栏目还没有选题，记录第一个灵感吧。</div>`;
+      if (!list.length) html += `<div class="empty"><span class="em">🎥</span>这个系列还没有选题，点上方「+ 新建选题」开始吧。</div>`;
       list.forEach((x) => { html += renderTopicItem(x); });
     } else if (contentView === 'hot') {
       const list = s.hotspots.slice().sort((a, b) => (a.rank != null ? a.rank : 99) - (b.rank != null ? b.rank : 99));
@@ -660,6 +721,7 @@
     return `<div class="list-item"><div class="li-top">
       <div class="li-title">${esc(x.title)}</div><span class="badge ${stCls}">${st}</span></div>
       <div class="li-sub">${x.source ? '来源：' + esc(x.source) + '\n' : ''}${x.idea ? '想法：' + esc(x.idea) : ''}</div>
+      <div style="margin-top:6px">${renderSeriesTag(seriesOf(x))}</div>
       ${x.direction ? renderDirection(x) : '<div class="tiny muted" style="margin-top:6px">还没有内容方向建议</div>'}
       <div class="row-actions" style="margin-top:8px">
         <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
@@ -667,15 +729,19 @@
         <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
   }
   function renderHotItem(h) {
-    const colName = (COLS.find((c) => c.id === h.col) || {}).name || h.col || '—';
     const fitCls = h.fit === '适合' ? 's2' : h.fit === '可参考' ? 's1' : 's4';
-    const isReal = h.linkType === 'real';
-    const linkTypeBadge = isReal
-      ? '<span class="badge s2">原内容链接</span>'
-      : '<span class="badge warn">平台搜索 / 榜单链接</span>';
-    const linkHtml = h.link
-      ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开${isReal ? '原内容' : '搜索/榜单'} ↗</a>`
-      : (h.source ? esc(h.source) : '—');
+    // 链接类型分三档，明确区分「原内容」与「平台搜索/榜单」，不把榜单伪装成原视频
+    let linkTypeBadge, linkHtml;
+    if (h.linkType === 'real') {
+      linkTypeBadge = '<span class="badge s2">原内容链接</span>';
+      linkHtml = h.link ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开原内容 ↗</a>` : '—';
+    } else if (h.linkType === 'weixin') {
+      linkTypeBadge = '<span class="badge warn">需在微信打开</span>';
+      linkHtml = '<span class="tiny muted">视频号具体视频仅在微信内打开；可把该视频的分享链接粘贴到「灵感库 · 链接」即可直接跳转。</span>';
+    } else {
+      linkTypeBadge = '<span class="badge warn">平台搜索 / 榜单链接</span>';
+      linkHtml = h.link ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开搜索 / 榜单 ↗</a>` : (h.source ? esc(h.source) : '—');
+    }
     const a = h.analysis || {};
     const open = App.folds['hotanal-' + h.id] ? 'open' : '';
     const teaser = a.whyHot || h.why || '点开看如何结合';
@@ -690,7 +756,7 @@
       <div class="li-title">${esc(h.topic)}</div>${h.collected ? '<span class="badge s2">已收录</span>' : ''}</div>
       <div class="li-sub">
         <b>来源平台：</b>${esc(h.source || '—')}　<b>热度：</b>${esc(h.heat || '—')}<br>
-        <b>是否适合：</b><span class="badge ${fitCls}">${esc(h.fit || '—')}</span>　<b>建议栏目：</b>${esc(colName)}<br>
+        <b>是否适合：</b><span class="badge ${fitCls}">${esc(h.fit || '—')}</span>　<b>适合系列：</b>${renderSeriesTag(seriesOf(h))}<br>
         <b>链接类型：</b>${linkTypeBadge}　<b>链接：</b>${linkHtml}
       </div>
       ${analysisFold}
@@ -722,7 +788,12 @@
       try { host = x.link ? new URL(x.link).hostname : ''; } catch (e) { host = ''; }
       const pname = detectPlatform(host);
       const pcolor = platformColorOf(pname);
+      // 左右布局：左侧封面（抓到的 og:image，失败则用平台首字母占位），右侧信息
+      const cover = x.image
+        ? `<div class="insp-cover" style="background-image:url('${esc(x.image)}')"></div>`
+        : `<div class="insp-cover insp-cover--ph" style="background:${pcolor}">${esc(pname.slice(0, 1))}</div>`;
       const linkHtml = x.link ? `<a class="chip link insp-open" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开链接 ↗</a>` : '';
+      const shortSum = (x.summary || '').slice(0, 64);
       const aiDir = x.direction ? renderDirection(x) : '';
       const detailOpen = App.folds['inspd-' + x.id] ? '' : 'display:none';
       const detail = `<div class="li-sub insp-detail" id="insp-${x.id}" style="${detailOpen}">
@@ -730,26 +801,29 @@
         ${x.summary ? '<b>摘要：</b>' + esc(x.summary) + '\n' : ''}
         ${x.refWhy ? '<b>值得参考：</b>' + esc(x.refWhy) + '\n' : ''}
         ${x.howMigrate ? '<b>如何迁移：</b>' + esc(x.howMigrate) : ''}
-        ${!x.summary && !x.refWhy && !x.howMigrate && !x.fetching ? '<span class="tiny muted">暂未获取到正文，点击「打开链接」查看。</span>' : ''}
+        ${!x.summary && !x.refWhy && !x.howMigrate && !x.fetching ? '<span class="tiny muted">暂未获取到正文，点「打开链接」查看。</span>' : ''}
         ${aiDir}</div>`;
       const detailBtn = App.folds['inspd-' + x.id] ? '收起细节' : '展开细节';
       return `<div class="list-item insp-card">
-        <div class="insp-main">
-          <div class="insp-avatar" style="background:${pcolor}">${esc(pname.slice(0, 1))}</div>
-          <div class="insp-left">
+        <div class="insp-grid">
+          ${cover}
+          <div class="insp-body">
             <div class="li-title">${esc(x.title)}</div>
             <div class="insp-plat">${esc(pname)}　${linkHtml}</div>
+            ${shortSum ? `<div class="insp-sum">${esc(shortSum)}${x.summary && x.summary.length > 64 ? '…' : ''}</div>` : ''}
+            <div class="insp-tags">${renderSeriesTag(seriesOf(x))}</div>
+            <div class="insp-acts">
+              <button class="mini ghost" data-act="toggle-insp-detail" data-id="${x.id}">${detailBtn}</button>
+              <button class="mini" data-act="promote-insp" data-id="${x.id}">收录为选题</button>
+              <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
+              <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button>
+            </div>
           </div>
-        </div>
-        <div class="insp-right">
-          <button class="mini ghost" data-act="toggle-insp-detail" data-id="${x.id}">${detailBtn}</button>
-          <button class="mini" data-act="promote-insp" data-id="${x.id}">收录为选题</button>
-          <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
-          <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button>
         </div>${detail}</div>`;
     }
     return `<div class="list-item"><div class="li-top">
       <div class="li-title">${esc(x.title)}</div><span class="badge s1">灵感</span></div>
+      <div style="margin-top:6px">${renderSeriesTag(seriesOf(x))}</div>
       ${x.direction ? renderDirection(x) : ''}
       <div class="row-actions" style="margin-top:8px">
         <button class="mini" data-act="promote-insp" data-id="${x.id}">收录为选题</button>
@@ -757,22 +831,22 @@
         <button class="mini" data-act="gen-dir" data-id="${x.id}">重新生成方向</button>
         <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button></div></div>`;
   }
+  // 编辑内容：极简 —— 只留 标题 / 适合系列 / 状态 / 链接（链接类额外 摘要/值得参考/如何迁移）。
+  // 不再有「栏目 / 内容方向 / 想法 / 脚本 / 发布时间 / 数据复盘」等字段；AI 生成方向是系统结果，不在这里维护。
   function contentFields(it) {
     const fields = [
       { key: 'title', label: '标题', value: it.title, placeholder: '选题标题' },
-      { key: 'col', label: '栏目', type: 'select', options: COLS.map((c) => ({ v: c.id, t: c.name })), value: it.col },
+      { key: 'series', label: '适合系列', type: 'series', value: it.series || '婧婧带你看泰国', hint: '固定三系列，不新增。' },
       { key: 'status', label: '状态', type: 'select', options: CSTATUS.map((c) => ({ v: c, t: c })), value: it.status || '灵感' },
-      { key: 'source', label: '来源', value: it.source, placeholder: '灵感来自哪里（可选）', hint: it.id ? '' : '想法与脚本由 AI 根据标题自动生成，无需填写。' },
     ];
     if (it.kind === 'link') {
       fields.push(
         { key: 'link', label: '链接', value: it.link, placeholder: 'https://…' },
-        { key: 'summary', label: '摘要', type: 'textarea', value: it.summary, placeholder: '这条链接里值得记的要点（平台限制无法自动抓取，请手动填）' },
+        { key: 'summary', label: '摘要', type: 'textarea', value: it.summary, placeholder: '这条链接里值得记的要点' },
         { key: 'refWhy', label: '值得参考', type: 'textarea', value: it.refWhy, placeholder: '为什么值得你参考' },
         { key: 'howMigrate', label: '如何迁移', type: 'textarea', value: it.howMigrate, placeholder: '可以怎么变成你的内容' }
       );
     }
-    if (it.id) fields.push({ key: 'series', label: '适合系列', type: 'select', options: SERIES_LIST.map((s) => ({ v: s, t: s })), value: it.series || '婧婧带你看泰国', hint: 'AI 已推荐，可手动改；固定三系列，不新增。' });
     return fields;
   }
 
@@ -780,20 +854,23 @@
    *  热点雷达（已并入内容宇宙顶部 tab，下方函数仍保留供 case 调用）
    * ============================================================ */
   // ---- 链接构造 / 平台识别 / 元数据抓取 / 平台配色 ----
-  // 纯前端无后端：不能拿具体内容 URL 时，退化成「关键词搜索」或「平台榜单」
+  // 纯前端无后端、且种子是「话题级」而非「具体视频」：
+  //   - 能构造的最具体链接 = 各平台的话题/搜索结果页（仍标 linkType:'search'，并明确标注「平台搜索/榜单链接」）
+  //   - 真正「原内容链接」只能来自你自己粘贴的具体分享链接（存为 linkType:'real'，直接打开）
+  //   - 视频号无公开网页可直达具体视频（仅微信内 sph 分享链接），故不生成假链接，标 linkType:'weixin' 并提示
   function buildLinkUrl(platform, keyword) {
     const kw = encodeURIComponent((keyword || '').trim());
     const map = {
       '小红书':   'https://www.xiaohongshu.com/search_result?keyword=' + kw + '&source=web_explore_feed',
       '抖音':     'https://www.douyin.com/search/' + kw + '/',
-      '微博':     'https://s.weibo.com/weibo?q=' + kw,
+      '微博':     'https://s.weibo.com/weibo?q=%23' + kw + '%23', // 微博超级话题页（真实内容聚合，比普通搜索更聚焦）
       '知乎':     'https://www.zhihu.com/search?type=content&q=' + kw,
       '百度':     'https://www.baidu.com/s?wd=' + kw,
       '今日头条': 'https://so.toutiao.com/search?keyword=' + kw + '&pd=information',
       'B站':      'https://search.bilibili.com/all?keyword=' + kw,
-      '视频号':   'https://channels.weixin.qq.com/', // 视频号无公开网页搜索，仅列平台入口
+      '视频号':   '', // 视频号无公开网页可直达具体视频，交由 renderHotItem 提示「在微信内打开」
       '新闻':     'https://www.baidu.com/s?wd=' + kw,
-      '热梗':     'https://s.weibo.com/weibo?q=' + kw,
+      '热梗':     'https://s.weibo.com/weibo?q=%23' + kw + '%23',
       '爆款形式': 'https://www.douyin.com/search/' + kw + '/',
       '可借鉴拍摄方式': 'https://www.douyin.com/search/' + kw + '/',
       '可迁移表达方式': 'https://www.xiaohongshu.com/search_result?keyword=' + kw + '&source=web_explore_feed',
@@ -830,26 +907,28 @@
     };
     return map[name] || '#9DB8C9';
   }
-  // 异步抓取原页面 og:title / og:description / <title> / meta description
-  // �️ 纯前端无后端：小红书/抖音/视频号等多数平台会因 CORS 失败 → 静默返回空，不影响主流程
+  // 异步抓取原页面 og:title / og:description / og:image / <title> / meta description
+  // 纯前端无后端：小红书/抖音/视频号等多数平台会因 CORS 失败 → 静默返回空，不影响主流程
   async function tryFetchMeta(url) {
-    if (!url || !/^https?:\/\//i.test(url)) return { title: '', description: '' };
+    if (!url || !/^https?:\/\//i.test(url)) return { title: '', description: '', image: '' };
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 3000);
       const resp = await fetch(url, { method: 'GET', mode: 'cors', signal: ctrl.signal, headers: { 'Accept': 'text/html,*/*' } });
       clearTimeout(timer);
-      if (!resp.ok) return { title: '', description: '' };
+      if (!resp.ok) return { title: '', description: '', image: '' };
       const html = await resp.text();
       const ogT = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
       const ogD = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+      const ogI = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
       const md  = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
       const tt  = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       return {
         title: (ogT && ogT[1]) || (tt && tt[1].trim()) || '',
-        description: (ogD && ogD[1]) || (md && md[1]) || ''
+        description: (ogD && ogD[1]) || (md && md[1]) || '',
+        image: (ogI && ogI[1]) || ''
       };
-    } catch (e) { return { title: '', description: '' }; }
+    } catch (e) { return { title: '', description: '', image: '' }; }
   }
   // 热点本地启发式分析（10 点；纯本地，无联网数据源）
   function buildHotAnalysis(seed, dir) {
@@ -990,30 +1069,34 @@
     ];
     let added = 0, skipped = 0;
     seeds.forEach((sd, i) => {
-      // 去重：同 topic + source 已存在则跳过（永不删除现有数据）
+      // 去重：同 topic + source 已存在则跳过（永不删除现有数据）；匹配到的标记为「今日已刷新」
       const dup = s.hotspots.find((h) => h.topic === sd.topic && h.source === sd.source);
-      if (dup) { skipped++; return; }
+      if (dup) { dup.date = today(); skipped++; return; }
       const sg = suggestHot(sd.topic);
       const dir = suggestDirection(sd.topic, sd.why);
       const analysis = buildHotAnalysis(sd, dir);
-      const url = buildLinkUrl(sd.source, sd.topic);
+      const isWeixin = sd.source === '视频号';
+      const url = isWeixin ? '' : buildLinkUrl(sd.source, sd.topic);
       s.hotspots.push(Object.assign(
         { id: uid(), date: today(), collected: false, auto: true, batch: batch,
           rank: i + 1,
           suggestedTopic: sd.topic,
           series: dir.series,
-          linkType: 'search',
+          linkType: isWeixin ? 'weixin' : 'search',
           link: url },
         sd, { col: sd.col || sg.col, analysis: analysis, combine: sd.angle || (dir && dir.extend) || '可结合你的系列切入' }
       ));
       added++;
     });
     save(); renderContent();
-    toast(added ? ('新增 ' + added + ' 条热点' + (skipped ? '，' + skipped + ' 条已存在已跳过' : '')) : '已是最新，没有新增 🌿');
+    const todayCount = s.hotspots.filter((h) => h.date === today()).length;
+    toast('今日已更新 ' + todayCount + ' 条热点' + (added ? '（新增 ' + added + '）' : ' 🌿'));
   }
   function collectHot(id) {
     const h = App.state.hotspots.find((x) => x.id === id); if (!h) return;
-    const d = suggestDirection(h.topic, h.why);
+    // 把热点自带的「为什么适合你 / 切入角度 / 推荐视频类型」一起喂给方向生成，避免泛话
+    const ctx = (h.why || '') + ' ' + ((h.analysis && h.analysis.angle) || '') + ' ' + ((h.analysis && h.analysis.videoType) || '');
+    const d = suggestDirection(h.topic, ctx);
     App.state.content.push({
       id: uid(), col: h.col || 'thailand', title: h.topic, status: '灵感',
       source: h.source, link: h.link || '', summary: h.why || '',
@@ -1031,7 +1114,7 @@
     let host = url;
     try { host = new URL(url).hostname; } catch (e) { /* 保留原串 */ }
     const id = uid();
-    App.state.content.push({ id: id, kind: 'link', link: url, title: title || host, summary: '', refWhy: '', howMigrate: '', status: '灵感', createdAt: today(), fetching: true });
+    App.state.content.push({ id: id, kind: 'link', link: url, title: title || host, summary: '', refWhy: '', howMigrate: '', image: '', status: '灵感', createdAt: today(), fetching: true });
     save(); renderContent(); toast('已保存链接 🔗（正在识别平台 / 抓标题）');
     tryFetchMeta(url).then((meta) => {
       const it = find(App.state.content, id); if (!it) return; // 已被删则不回填，避免脏写
@@ -1039,8 +1122,13 @@
       const d = (meta.description || '').replace(/\s+/g, ' ').trim();
       if (!title && t) it.title = t.slice(0, 120);
       if (d) it.summary = d.slice(0, 300);
+      if (meta.image) it.image = meta.image;
       const dir = suggestDirection(it.title, '');
       it.direction = dir; it.series = dir.series;
+      // 基于真实抓取到的标题/简介，给出「值得参考 / 如何迁移」具体分析（不泛谈）
+      const pname = detectPlatform(host);
+      const ia = buildInspAnalysis(it.title, it.summary, pname, dir.series);
+      it.refWhy = ia.why; it.howMigrate = ia.how;
       it.fetching = false;
       save(); renderContent();
     }).catch(() => {
@@ -1479,12 +1567,12 @@
       case 'confirm-insp': confirmInsp(id); break;
       case 'del-insp': if (trashItem('inspirations', id, 'inspiration')) { save(); renderInspiration(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
-      case 'content-tab': contentView = id; if (id === 'hot') { App.state.hotspots.forEach((h) => { h.read = true; }); if (!App.state.hotspots.length) genHot(); } renderContent(); break;
-      case 'filter-content': contentCol = id; contentView = 'col'; renderContent(); break;
-      case 'insp-sub': inspKind = id; renderContent(); break;
+      case 'content-tab': contentView = id; if (id === 'hot') { App.state.hotspots.forEach((h) => { h.read = true; }); if (!App.state.hotspots.length) genHot(); } saveView(); renderContent(); break;
+      case 'filter-content': contentCol = id; contentView = 'col'; saveView(); renderContent(); break;
+      case 'insp-sub': inspKind = id; saveView(); renderContent(); break;
       case 'add-insp-link': { const u = $('#qa-link'), t = $('#qa-link-title'); addInspLink(u ? u.value : '', t ? t.value : ''); if (u) u.value = ''; if (t) t.value = ''; break; }
       case 'add-insp-note': { const n = $('#qa-note'); if (n) { addInspNote(n.value); n.value = ''; } break; }
-      case 'toggle-insp-detail': { const el = document.getElementById('insp-' + id); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; break; }
+      case 'toggle-insp-detail': { App.folds['inspd-' + id] = !App.folds['inspd-' + id]; render(); break; }
       case 'promote-insp': promoteInsp(id); break;
       case 'add-content': editContent(null); break;
       case 'edit-content': editContent(id); break;
@@ -1588,9 +1676,12 @@
     openForm(id ? '编辑选题' : '新建选题', contentFields(x), null, (fd) => {
       if (id) {
         Object.assign(x, fd);
+        x.series = fd.series || x.series;
+        x.col = SERIES_COL[x.series] || x.col; // 兼容旧字段，不影响显示
       } else {
-        const d = suggestDirection(fd.title, fd.idea);
-        App.state.content.push(Object.assign({ id: uid(), createdAt: today() }, fd, { series: d.series, direction: d, idea: d.hook, script: genScript(fd.title, d) }));
+        const d = suggestDirection(fd.title, '');
+        d.series = fd.series || d.series;
+        App.state.content.push(Object.assign({ id: uid(), createdAt: today(), col: SERIES_COL[d.series] || 'thailand' }, fd, { series: d.series, direction: d, idea: d.hook, script: genScript(fd.title, d) }));
       }
       save(); renderContent();
     });
@@ -1602,9 +1693,14 @@
       { key: 'source', label: '来源', value: h.source, placeholder: '抖音/小红书/视频号/泰国/留学' },
       { key: 'heat', label: '热度', value: h.heat },
       { key: 'why', label: '为什么适合你', type: 'textarea', value: h.why },
-      { key: 'col', label: '建议栏目', type: 'select', options: COLS.map((c) => ({ v: c.id, t: c.name })), value: h.col || 'campus' },
+      { key: 'series', label: '适合系列', type: 'series', value: h.series || '婧婧带你看泰国' },
+      { key: 'link', label: '具体内容链接（可选）', value: h.link || '', placeholder: '粘贴该热点的具体视频/新闻链接；留空则用平台搜索页' },
       { key: 'suggestedTopic', label: '推荐选题方向', type: 'textarea', value: h.suggestedTopic },
-    ], null, (fd) => { if (id) Object.assign(h, fd); else App.state.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false }, fd)); save(); renderContent(); });
+    ], null, (fd) => {
+      if (id) { Object.assign(h, fd); h.series = fd.series || h.series; h.linkType = fd.link ? 'real' : (h.linkType || 'search'); }
+      else { App.state.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false, linkType: fd.link ? 'real' : 'search' }, fd)); }
+      save(); renderContent();
+    });
   }
   function editCustomer(id) {
     const c = id ? find(App.state.customers, id) : { stage: '流量触达' };
@@ -1835,6 +1931,29 @@
   $('#settingsBtn').onclick = renderSettings;
   $('#navToggle').onclick = () => document.body.classList.toggle('nav-open');
   $('#navMask').onclick = () => document.body.classList.remove('nav-open');
+  // 移动端：从屏幕左边缘向右滑 → 打开左侧菜单；菜单打开时向左滑 → 关闭
+  // 仅用窄触发区 + 横向判定，passive 不拦截滚动；独立 PWA 模式下无浏览器返回手势冲突
+  (function () {
+    let sx = 0, sy = 0, tracking = false, mode = 'open';
+    const EDGE = 22, OPEN_DX = 14, CLOSE_DX = 40;
+    document.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { tracking = false; return; }
+      const t = e.touches[0]; sx = t.clientX; sy = t.clientY;
+      if (document.body.classList.contains('nav-open')) { tracking = sx <= 90; mode = 'close'; }
+      else { tracking = sx <= EDGE; mode = 'open'; }
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!tracking) return;
+      const t = e.touches[0]; const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (mode === 'open') {
+        if (dx > OPEN_DX && Math.abs(dx) > Math.abs(dy)) { document.body.classList.add('nav-open'); tracking = false; }
+        else if (Math.abs(dy) > Math.abs(dx) + 10) tracking = false;
+      } else {
+        if (dx < -CLOSE_DX && Math.abs(dx) > Math.abs(dy)) { document.body.classList.remove('nav-open'); tracking = false; }
+        else if (Math.abs(dy) > Math.abs(dx) + 10) tracking = false;
+      }
+    }, { passive: true });
+  })();
 
   /* ---------------- 首次启动种子 ---------------- */
   function seed() {
@@ -1855,12 +1974,21 @@
     }
     App.state = await DB.loadAll();
     ensure();
+    // 恢复上次浏览位置（刷新不跳回首页）
+    try {
+      const v = JSON.parse(localStorage.getItem('sb_view') || '{}');
+      if (v.current) App.current = v.current;
+      if (v.contentView) contentView = v.contentView;
+      if (v.contentCol) contentCol = v.contentCol;
+      if (v.inspKind) inspKind = v.inspKind;
+    } catch (e) { /* 忽略损坏的视图记录 */ }
     if (!App.state.meta || !App.state.meta.firstRun) seed();
     DB.onStatus(updateStatus);
     updateStatus();
     renderNav();
     render();
-    setPage('今日工作台');
+    const cm = MODULES.find((x) => x.id === App.current);
+    setPage(cm ? cm.name : '今日工作台');
     $('#pageDate').textContent = today() + ' · ' + ['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()];
     booted = true;
   }

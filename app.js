@@ -17,6 +17,14 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const num = (v, d = 0) => Number(v || 0).toLocaleString('zh-CN', { maximumFractionDigits: d });
+  // 统计一份 state 的"活数据"条数（与 db.js liveCount 对应，供导入校验使用）
+  function liveCountOf(s) {
+    if (!s || typeof s !== 'object') return 0;
+    let n = 0;
+    ['tasks', 'growth', 'inspirations', 'content', 'hotspots', 'customers', 'ecommerce', 'english', 'health', 'income', 'reviews', 'decisions'].forEach((k) => { if (Array.isArray(s[k])) n += s[k].length; });
+    if (s.aiProfile && typeof s.aiProfile === 'object') n += Object.keys(s.aiProfile).length;
+    return n;
+  }
   const catClass = (c) => ({ edu: 'edu', content: 'content', ecom: 'ecom', biz: 'biz', grow: 'grow' }[c] || '');
   const catName = (c) => ({ edu: '教育', content: '内容', ecom: '电商', biz: '商业', grow: '成长' }[c] || '');
 
@@ -877,12 +885,34 @@
   function importData(file) {
     const reader = new FileReader();
     reader.onload = () => {
+      let obj;
       try {
-        const obj = JSON.parse(reader.result);
-        if (!obj || typeof obj !== 'object') throw new Error('不是有效的备份');
-        App.state = obj; save(); DB.saveAll(App.state); ensure(); updateStatus(); render();
-        toast('已导入，数据同步完成 ✅');
-      } catch (e) { toast('导入失败：' + (e && e.message ? e.message : '文件格式不对')); }
+        const text = String(reader.result == null ? '' : reader.result).trim();
+        if (!text) throw new Error('文件内容为空');
+        obj = JSON.parse(text);   // 损坏 JSON 在此抛 SyntaxError
+      } catch (e) {
+        toast('导入失败：' + (e && e.message ? e.message : '文件格式不对') + '，当前数据未改动');
+        return;                    // 不替换、不保存、不同步
+      }
+      // 结构校验：非 JINN GROW 结构 / 字段异常 / 条目缺 id → 拒绝
+      const err = DB.validateState(obj);
+      if (err) {
+        toast('导入失败：' + err + '，当前数据未改动');
+        return;                    // 不替换、不保存、不同步
+      }
+      // 危险：导入后为空，但本地原本有大量数据 → 拒绝覆盖（云端由 pushSafe 兜底拦截）
+      const prevCount = liveCountOf(App.state);
+      const newCount = liveCountOf(obj);
+      if (prevCount >= 10 && newCount === 0) {
+        toast('导入被拒绝：导入后数据为空，但本地原有 ' + prevCount + ' 条数据，云端数据已保留');
+        return;
+      }
+      // 通过校验：先自动拍快照（导入前完整状态），再替换并保存
+      DB.takeSnapshot();
+      App.state = obj; ensure();
+      save(); DB.saveAll(App.state); ensure(); updateStatus(); render();
+      DB.clearSnapshot();
+      toast('已导入，数据同步完成 ✅');
     };
     reader.readAsText(file);
   }
@@ -1289,6 +1319,18 @@
     if (modalHost.classList.contains('show') || typing) return;
     render();
     toast('已同步最新内容 ☁️');
+  };
+
+  /* 数据安全：db.js 检测到"危险覆盖"时回调 —— 暂停上传、保留云端、尽量自动恢复到导入前快照 */
+  window.__onSyncDanger__ = function (msg) {
+    const snap = DB.getSnapshot ? DB.getSnapshot() : null;
+    if (snap && liveCountOf(snap) > liveCountOf(App.state || {})) {
+      App.state = snap; ensure(); save(); render();
+      toast('⚠️ 检测到异常同步，已自动拦截并恢复到导入前状态 🛡️');
+    } else {
+      toast('⚠️ 同步异常已拦截：' + (msg || '数据保护') + '（云端数据已保留）');
+    }
+    updateStatus();
   };
 
   /* ---------------- 事件绑定 ---------------- */

@@ -166,6 +166,72 @@ window.DB = (function () {
     });
   }
 
+  /* ============================================================
+   *  数据安全加固：危险覆盖拦截 + 导入结构校验 + 导入前快照
+   *  目标：任何情况下都不因异常导入 / 空数据 / 初始化异常 / 同步异常，
+   *        把 GitHub 云端已有数据整体清空或重置。
+   * ============================================================ */
+  // 统计一份 state 里"活数据"条数（实体数组 + aiProfile 字段数）
+  function liveCount(s) {
+    if (!s || typeof s !== 'object') return 0;
+    let n = 0;
+    ENTITIES.forEach((k) => { if (Array.isArray(s[k])) n += s[k].length; });
+    if (s.aiProfile && typeof s.aiProfile === 'object') n += Object.keys(s.aiProfile).length;
+    return n;
+  }
+  // 统计 state 的墓碑会"误删"云端多少条真实数据
+  function tombstonedCloudCount(state, cloud) {
+    if (!state || !state.tombstones || !cloud) return 0;
+    let n = 0;
+    ENTITIES.forEach((k) => {
+      const tomb = state.tombstones[k];
+      if (!tomb || typeof tomb !== 'object') return;
+      const arr = Array.isArray(cloud[k]) ? cloud[k] : [];
+      arr.forEach((it) => { if (it && it.id && tomb[it.id]) n++; });
+    });
+    return n;
+  }
+  // 危险覆盖检测：返回危险原因字符串；安全返回 null
+  function detectDanger(state, cloud) {
+    const cloudLive = liveCount(cloud);
+    if (cloudLive === 0) return null;                 // 云端本身为空：正常首次初始化，不算危险
+    const stateLive = liveCount(state);
+    if (stateLive === 0) return '待上传数据为空，但云端仍有 ' + cloudLive + ' 条数据';   // 空状态上传
+    if (cloudLive >= 50 && stateLive <= cloudLive * 0.1)
+      return '待上传数据量(' + stateLive + ') 相比云端(' + cloudLive + ') 几乎为空，疑似大量丢失';
+    const t = tombstonedCloudCount(state, cloud);
+    if (t >= 8 && t >= cloudLive * 0.8)
+      return '检测到 ' + t + ' 条异常删除记录，可能误删云端数据';
+    // 结构兜底：哪怕绕过 importData 校验，畸形 state（如缺 id 条目）也绝不 PUT 覆盖云端
+    const bad = validateState(state);
+    if (bad) return '待上传数据结构异常（' + bad + '），拒绝覆盖云端';
+    return null;
+  }
+  // 导入结构校验：返回错误原因；合法返回 null
+  function validateState(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '不是对象结构';
+    const hasAnyEnt = ENTITIES.some((k) => Array.isArray(obj[k]));
+    if (!hasAnyEnt && !obj.aiProfile && !obj.trash) return '不是 JINN GROW 备份结构（缺少实体字段）';
+    for (const k of ENTITIES) {
+      if (obj[k] != null && !Array.isArray(obj[k])) return '实体字段『' + k + '』不是数组';
+    }
+    if (obj.aiProfile != null && (typeof obj.aiProfile !== 'object' || Array.isArray(obj.aiProfile))) return 'aiProfile 结构异常';
+    if (obj.trash != null && !Array.isArray(obj.trash)) return 'trash 结构异常';
+    for (const k of ENTITIES) {
+      if (Array.isArray(obj[k])) for (const it of obj[k]) if (!it || typeof it !== 'object' || it.id == null) return '实体『' + k + '』存在缺少 id 的条目';
+    }
+    return null;
+  }
+  // 导入前自动快照（存本地，绝不进云端）
+  const SNAP_KEY = 'sb_snapshot';
+  function takeSnapshot() {
+    try { const s = loadLocal(); localStorage.setItem(SNAP_KEY, JSON.stringify(s)); } catch (_) {}
+  }
+  function getSnapshot() {
+    try { const raw = localStorage.getItem(SNAP_KEY); if (!raw) return null; const s = JSON.parse(raw); return (s && typeof s === 'object') ? s : null; } catch (_) { return null; }
+  }
+  function clearSnapshot() { try { localStorage.removeItem(SNAP_KEY); } catch (_) {} }
+
   /* 把本机已有的同步凭据（云端不含）合并进云端数据，避免 pull 回来后丢失配置 */
   function withLocalAuth(cloud) {
     const out = JSON.parse(JSON.stringify(cloud || {}));
@@ -376,6 +442,14 @@ window.DB = (function () {
       if (cloud && !hasMeaningfulState(state) && localHasData(cloud)) {
         saveLocal(withLocalAuth(cloud)); setStatus(true); return;
       }
+      // 危险覆盖拦截：空状态 / 近空 / 异常墓碑 → 暂停本次上传，保留云端与本地
+      const danger = detectDanger(state, cloud);
+      if (danger) {
+        console.warn('[第二大脑] 危险覆盖已拦截：' + danger);
+        setStatus(false);
+        if (typeof window.__onSyncDanger__ === 'function') { try { window.__onSyncDanger__(danger); } catch (_) {} }
+        return;
+      }
       const merged = cloud ? structuralMerge(state, cloud) : state;
       merged.meta = merged.meta || {};
       merged.meta.lastModified = Math.max((cloud && cloud.meta && cloud.meta.lastModified) || 0, state.meta.lastModified || 0);
@@ -520,6 +594,7 @@ window.DB = (function () {
 
   return {
     initSync, loadAll, saveAll, onStatus,
+    validateState, takeSnapshot, getSnapshot, clearSnapshot,
     getBackend: () => backend,
     isConnected: () => connected,
     useLocal: () => { backend = 'local'; setStatus(false); stopAutoPull(); }

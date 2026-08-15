@@ -378,15 +378,17 @@ header.topbar {
 .series-opt .series-ic { font-size: 15px; }
 .series-opt.checked { border-color: var(--sc); color: var(--sc); font-weight: 700; box-shadow: 0 0 0 3px color-mix(in srgb, var(--sc) 32%, transparent); }
 
-/* 灵感库链接：左右卡片网格（封面 + 信息） */
-.insp-card { display: block; }
-.insp-grid { display: flex; gap: 12px; align-items: stretch; }
+/* 灵感库链接：并排卡片网格（手机 2 列、桌面 3 列+），每张卡竖排：封面在上、信息在下 */
+.insp-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 2px; align-items: stretch; }
+@media (min-width: 720px) { .insp-cards { grid-template-columns: repeat(3, 1fr); gap: 14px; } }
+.insp-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .insp-cover {
-  width: 92px; min-height: 92px; flex-shrink: 0; border-radius: 12px;
+  width: 100%; aspect-ratio: 16 / 9; min-height: 96px; display: flex; align-items: center; justify-content: center;
   background-size: cover; background-position: center; background-color: var(--bg-soft);
+  color: #fff; font-size: 30px; font-weight: 800; text-decoration: none;
 }
-.insp-cover--ph { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 30px; font-weight: 800; }
-.insp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.insp-cover--ph { /* 占位：平台首字母 */ }
+.insp-body { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 12px; }
 .insp-sum {
   font-size: 12.5px; color: var(--ink-soft); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

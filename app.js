@@ -144,7 +144,7 @@
     const body = fields.map((f) => {
       const v = initial[f.key] != null ? initial[f.key] : (f.value != null ? f.value : '');
       let ctrl;
-      if (f.type === 'textarea') ctrl = `<textarea name="${f.key}" placeholder="${esc(f.placeholder || '')}">${esc(v)}</textarea>`;
+      if (f.type === 'textarea') ctrl = `<textarea name="${f.key}" class="${esc(f.cls || '')}" placeholder="${esc(f.placeholder || '')}">${esc(v)}</textarea>`;
       else if (f.type === 'select') ctrl = `<select name="${f.key}">` + (f.options || []).map((o) =>
         `<option value="${esc(o.v)}" ${o.v === v ? 'selected' : ''}>${esc(o.t)}</option>`).join('') + `</select>`;
       else if (f.type === 'series') ctrl = `<div class="series-picker">` + (f.options || SERIES_LIST).map((o) => {
@@ -665,30 +665,12 @@
 
     // —— 顶部：今日金句（中文 + 英文），占据原 hero 位置，去掉「慢慢来」废话 ——
     html += `<div class="card home-quote2">
-      <h3>今日金句</h3>
       <div class="hq-t">${esc(q.zh)}</div>
       <div class="hq-en">${esc(q.en)}</div>
       <button class="mini ghost" data-act="home-quote" style="margin-top:6px">换一句</button>
     </div>`;
 
-    // —— 今日份进步：配置驱动的习惯打卡（兼容层：通过 kind 复用 english/health；自定义用 habitLogs）——
-    const habits = (s.habits || []).filter((h) => h.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
-    const habitBoxes = habits.map((h) => {
-      const done = isHabitDoneToday(h);
-      const md = habitMonthDays(h);
-      return `<div class="home-check ${done ? 'on' : ''}" data-act="home-toggle-checkin" data-id="${h.id}">
-        <span class="box">${done ? '✓' : ''}</span>
-        <span class="ic">${esc(h.icon || '🌱')}</span>
-        <span class="lab">${esc(h.name)}</span>
-        <span class="md">本月 ${md} 天</span>
-        ${done ? '<button class="mini ghost" data-act="home-edit-note" data-id="' + h.id + '" style="margin-left:auto">＋ 备注</button>' : ''}
-      </div>`;
-    }).join('') || '<div class="muted tiny">还没有习惯，点右上角「管理」添加。</div>';
-    html += `<div class="card home-top">
-      <h3>🌟 今日份进步 <span class="tag">点击方框 = 打卡 / 取消</span><button class="hbtn" data-act="home-habit-manage" style="margin-left:auto">⚙️ 管理</button></h3>
-      <div class="home-checks">${habitBoxes}</div>
-      <div class="home-income">💰 财富 · 本月 ${incDays.size} 天（真实收入记录，不参与打卡）</div>
-    </div>`;
+    // （「今日份进步」模块已移至「临时记录」之后，见下方）
 
     // —— 下一个重要日子：紧凑一行（去掉「距离…还有」长标签）——
     const days = nx ? Math.round((new Date(nx.date).getTime() - new Date(td).getTime()) / 86400000) : 0;
@@ -715,11 +697,29 @@
         </div>
       </div></div>`;
 
-    // —— 临时记录：点击进入大面积备忘录编辑 ——
-    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点击打开大编辑器</span></h3>
-      <div class="quick-add"><input id="home-temp" placeholder="临时事项 / 灵感 / 一句话…" readonly>
-        <button class="btn ghost sm" data-act="home-add-temp-modal">写一下</button></div>
-      <div class="tiny muted">点「写一下」打开大面积编辑器，取消不会保存</div></div>`;
+    // —— 临时记录：点击整块即打开大面积备忘录编辑（窄框本身带 data-act 触发）——
+    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点一下写</span></h3>
+      <div class="home-temp-trigger" data-act="home-add-temp-modal">记下现在想到的事情……</div>
+      <div class="tiny muted">点上方区域打开大面积编辑器，取消不保存</div></div>`;
+
+    // —— 今日份进步：配置驱动的习惯打卡（兼容层：通过 kind 复用 english/health；自定义用 habitLogs）——
+    const habits = (s.habits || []).filter((h) => h.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const habitBoxes = habits.map((h) => {
+      const done = isHabitDoneToday(h);
+      const md = habitMonthDays(h);
+      return `<div class="home-check ${done ? 'on' : ''}" data-act="home-toggle-checkin" data-id="${h.id}">
+        <span class="box">${done ? '✓' : ''}</span>
+        <span class="ic">${esc(h.icon || '🌱')}</span>
+        <span class="lab">${esc(h.name)}</span>
+        <span class="md">本月 ${md} 天</span>
+        ${done ? '<button class="mini ghost" data-act="home-edit-note" data-id="' + h.id + '" style="margin-left:auto">＋ 备注</button>' : ''}
+      </div>`;
+    }).join('') || '<div class="muted tiny">还没有习惯，点右上角「管理」添加。</div>';
+    html += `<div class="card home-top">
+      <h3>🌟 今日份进步 <span class="tag">点击方框 = 打卡 / 取消</span><button class="hbtn" data-act="home-habit-manage" style="margin-left:auto">⚙️ 管理</button></h3>
+      <div class="home-checks">${habitBoxes}</div>
+      <div class="home-income">💰 财富 · 本月 ${incDays.size} 天（真实收入记录，不参与打卡）</div>
+    </div>`;
 
     // —— 拍摄计划 ——
     html += `<div class="card"><h3>🎬 拍摄计划 <span class="tag">内容宇宙 · 待制作 ${shoot.length} 条</span></h3>`;
@@ -755,8 +755,6 @@
   function bindHomeQuickAdd() {
     const t = $('#home-task-title');
     if (t) t.onkeydown = (e) => { if (e.key === 'Enter') homeAddTask(); };
-    const tmp = $('#home-temp');
-    if (tmp) tmp.onkeydown = (e) => { if (e.key === 'Enter') homeAddTempModal(); };
   }
   function homeAddTask() {
     const inp = $('#home-task-title'); const sel = $('#home-task-cat');
@@ -768,7 +766,7 @@
   }
   // 临时记录：点击进入大面积备忘录编辑（复用 tasks type='temp'，不建第二套）
   function homeAddTempModal() {
-    openForm('临时记录', [{ key: 'text', label: '', type: 'textarea', placeholder: '临时事项 / 灵感 / 想法…', value: '' }], null, (fd) => {
+    openForm('临时记录', [{ key: 'text', label: '', type: 'textarea', cls: 'temp-area', placeholder: '临时事项 / 灵感 / 想法…', value: '' }], null, (fd) => {
       const v = (fd.text || '').trim(); if (!v) { toast('没有内容，未保存'); return; }
       addTask('temp', v); toast('已记到临时记录 💭');
     });

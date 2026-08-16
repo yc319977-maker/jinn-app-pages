@@ -473,6 +473,11 @@ header.topbar {
 .home-quote2 { background: linear-gradient(135deg, #FFF7EA, #F1F4EC); border: 1px solid #F4E6CF; border-radius: 13px; padding: 12px 14px; margin-bottom: 12px; }
 .home-quote2 .hq-t { font-size: 15.5px; font-weight: 600; line-height: 1.7; }
 .home-quote2 .hq-en { font-size: 13px; color: var(--ink-soft); line-height: 1.6; margin-top: 4px; font-style: italic; }
+/* 轮次 P：临时记录点击触发区（窄框本身可点，避免 readonly input 焦点吞掉点击）*/
+.home-temp-trigger { border: 1px solid var(--line, #e3e8ee); border-radius: 11px; padding: 12px 14px; min-height: 22px; color: var(--ink-soft, #9aa5b1); background: var(--card, #fff); cursor: pointer; font-size: 14px; line-height: 1.5; user-select: none; -webkit-tap-highlight-color: transparent; }
+.home-temp-trigger:active { background: var(--bg-soft, #f3f6f8); }
+/* 临时记录大面积编辑器：多行、大面积、手机端可正常输入 */
+.temp-area { width: 100%; min-height: 46vh; max-height: 64vh; font-size: 15px; line-height: 1.7; padding: 12px; }
 .home-next { display: flex; align-items: center; gap: 8px; background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; position: relative; }
 .home-next .hn-ic { font-size: 17px; }
 .home-next .hn-t { font-size: 13px; color: var(--ink-soft); }

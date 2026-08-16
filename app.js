@@ -63,7 +63,7 @@
   /* ---------------- 模块导航 ---------------- */
   const MODULES = [
     { id: 'home', name: '首页', short: '首页', icon: '🏠' },
-    { id: 'today', name: '今日工作台', short: '今日', icon: '🌱', home: true },
+    { id: 'today', name: '每日进步', short: '进步', icon: '🌱', home: true },
     { id: 'month', name: '成长月历', short: '月历', icon: '📅' },
     { id: 'growth', name: '成长地图', short: '成长', icon: '🗺️' },
     { id: 'inspiration', name: '灵感站', short: '灵感', icon: '💡' },
@@ -605,40 +605,117 @@
    *  - 成长痕迹 → 读 tasks.filter(done)
    *  - 金句 → 内置池中英文池，按日切换，不写 state、不调第三方 API
    * ============================================================ */
+  // 中国法定节假日 + 传统节日（2026–2030 内置表；代码常量，不写入用户 state，不可被用户修改）
+  // 春节/元宵/端午/中秋/重阳为农历，按标准农历日历推算；2030 之后年份本表不覆盖（可后续续表）。
+  const CN_HOLIDAYS = [
+    { title: '元旦', date: '2026-01-01', kind: 'statutory' },
+    { title: '春节', date: '2026-02-17', kind: 'statutory' },
+    { title: '元宵', date: '2026-03-03', kind: 'tradition' },
+    { title: '除夕', date: '2026-02-16', kind: 'tradition' },
+    { title: '清明', date: '2026-04-05', kind: 'statutory' },
+    { title: '劳动节', date: '2026-05-01', kind: 'statutory' },
+    { title: '端午', date: '2026-06-19', kind: 'statutory' },
+    { title: '中秋', date: '2026-09-25', kind: 'statutory' },
+    { title: '国庆', date: '2026-10-01', kind: 'statutory' },
+    { title: '重阳', date: '2026-10-19', kind: 'tradition' },
+    { title: '元旦', date: '2027-01-01', kind: 'statutory' },
+    { title: '春节', date: '2027-02-06', kind: 'statutory' },
+    { title: '元宵', date: '2027-02-20', kind: 'tradition' },
+    { title: '除夕', date: '2027-02-05', kind: 'tradition' },
+    { title: '清明', date: '2027-04-05', kind: 'statutory' },
+    { title: '劳动节', date: '2027-05-01', kind: 'statutory' },
+    { title: '端午', date: '2027-06-09', kind: 'statutory' },
+    { title: '中秋', date: '2027-09-15', kind: 'statutory' },
+    { title: '国庆', date: '2027-10-01', kind: 'statutory' },
+    { title: '重阳', date: '2027-10-09', kind: 'tradition' },
+    { title: '元旦', date: '2028-01-01', kind: 'statutory' },
+    { title: '春节', date: '2028-01-27', kind: 'statutory' },
+    { title: '元宵', date: '2028-02-10', kind: 'tradition' },
+    { title: '除夕', date: '2028-01-26', kind: 'tradition' },
+    { title: '清明', date: '2028-04-04', kind: 'statutory' },
+    { title: '劳动节', date: '2028-05-01', kind: 'statutory' },
+    { title: '端午', date: '2028-05-28', kind: 'statutory' },
+    { title: '中秋', date: '2028-09-03', kind: 'statutory' },
+    { title: '国庆', date: '2028-10-01', kind: 'statutory' },
+    { title: '重阳', date: '2028-09-27', kind: 'tradition' },
+    { title: '元旦', date: '2029-01-01', kind: 'statutory' },
+    { title: '春节', date: '2029-02-13', kind: 'statutory' },
+    { title: '元宵', date: '2029-02-27', kind: 'tradition' },
+    { title: '除夕', date: '2029-02-12', kind: 'tradition' },
+    { title: '清明', date: '2029-04-04', kind: 'statutory' },
+    { title: '劳动节', date: '2029-05-01', kind: 'statutory' },
+    { title: '端午', date: '2029-06-15', kind: 'statutory' },
+    { title: '中秋', date: '2029-09-21', kind: 'statutory' },
+    { title: '国庆', date: '2029-10-01', kind: 'statutory' },
+    { title: '重阳', date: '2029-10-16', kind: 'tradition' },
+    { title: '元旦', date: '2030-01-01', kind: 'statutory' },
+    { title: '春节', date: '2030-02-03', kind: 'statutory' },
+    { title: '元宵', date: '2030-02-17', kind: 'tradition' },
+    { title: '除夕', date: '2030-02-02', kind: 'tradition' },
+    { title: '清明', date: '2030-04-05', kind: 'statutory' },
+    { title: '劳动节', date: '2030-05-01', kind: 'statutory' },
+    { title: '端午', date: '2030-06-04', kind: 'statutory' },
+    { title: '中秋', date: '2030-09-11', kind: 'statutory' },
+    { title: '国庆', date: '2030-10-01', kind: 'statutory' },
+    { title: '重阳', date: '2030-10-05', kind: 'tradition' },
+  ];
+
   function renderHome() {
     const s = App.state;
     const td = today();
-    const ym = td.slice(0, 7); // 当前年月
 
-    // —— 本月打卡天数（按 distinct day 计，不硬编码目标天数）——
-    const enDays = new Set(s.english.filter((e) => (e.date || '').slice(0, 7) === ym).map((e) => e.date));
-    const heDays = new Set(s.health.filter((h) => (h.date || '').slice(0, 7) === ym).map((h) => h.date));
-    const incDays = new Set(s.income.filter((i) => (i.date || '').slice(0, 7) === ym).map((i) => i.date));
+    // —— 今日份进步：英语/健康 今日是否已打卡（存在 date===今天 的记录即完成）——
+    const enDone = s.english.some((e) => (e.date || '') === td);
+    const heDone = s.health.some((h) => (h.date || '') === td);
+    const incDays = new Set(s.income.filter((i) => (i.date || '').slice(0, 7) === td.slice(0, 7)).map((i) => i.date));
 
     // —— 拍摄计划：内容宇宙 status=待制作 ——
     const shoot = s.content.filter((c) => c.status === '待制作');
 
-    // —— 最近成长痕迹：已完成任务（按 doneAt||date 倒序，取前 6）——
-    const trace = s.tasks.filter((t) => t.done && !t.canceled)
-      .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
-      .slice(0, 6);
+    // —— 下一个重要日子：系统节假日(未来) + 用户自定义(未来)，取最近一个 ——
+    const holNext = CN_HOLIDAYS.filter((h) => h.date >= td).map((h) => ({ title: h.title, date: h.date }));
+    const cusNext = (s.dates || []).filter((d) => d.date >= td).map((d) => ({ title: d.title, date: d.date }));
+    const allNext = holNext.concat(cusNext).sort((a, b) => a.date.localeCompare(b.date));
+    const nx = allNext[0] || null;
+    const nextLabel = nx ? (nx.date === td ? nx.title + ' · 就是今天' : nx.title + ' · 还有 ' + Math.round((new Date(nx.date).getTime() - new Date(td).getTime()) / 86400000) + ' 天') : '暂无，去加一个吧';
 
-    // —— 下一个重要日期：s.dates ——
-    const dates = (s.dates || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const upcoming = dates.filter((d) => d.date >= td);
-    const nextDate = upcoming[0] || dates[dates.length - 1] || null;
-
-    // 今日金句
+    // 今日金句（中英文，按日确定切换）
     const q = homeQuote();
 
     let html = `
-    <div class="hero">
-      <div class="hi">${greet()}</div>
+    <div class="hero home-hero">
+      <div class="hi">${greet()} · ${td}</div>
       <div class="big">jinn，今天也慢慢来 🌿</div>
-      <div class="sub">${td} · 最常用的几件事，都在这一屏</div>
     </div>`;
 
-    // —— 第一优先：快速添加任务 + 临时记录 ——
+    // —— 顶部「今日状态区」：今日份进步 + 金句 + 下一个重要日子 ——
+    html += `<div class="card home-top">
+      <h3>🌟 今日份进步 <span class="tag">点击方框 = 今天完成</span></h3>
+      <div class="home-checks">
+        <div class="home-check ${enDone ? 'on' : ''}" data-act="home-toggle-checkin" data-kind="english">
+          <span class="box">${enDone ? '✓' : ''}</span><span class="lab">英语</span>
+          ${enDone ? '<button class="mini ghost" data-act="home-edit-note" data-kind="english">添加备注</button>' : ''}
+        </div>
+        <div class="home-check ${heDone ? 'on' : ''}" data-act="home-toggle-checkin" data-kind="health">
+          <span class="box">${heDone ? '✓' : ''}</span><span class="lab">健康</span>
+          ${heDone ? '<button class="mini ghost" data-act="home-edit-note" data-kind="health">添加备注</button>' : ''}
+        </div>
+        <div class="home-income">💰 财富 · 本月 ${incDays.size} 天（真实收入记录）</div>
+      </div>
+      <div class="home-quote2">
+        <div class="hq-t">${esc(q.zh)}</div>
+        <div class="hq-en">${esc(q.en)}</div>
+        <button class="mini ghost" data-act="home-quote" style="margin-top:4px">换一句</button>
+      </div>
+      <div class="home-next">
+        <span class="hn-ic">📅</span>
+        <span class="hn-t">距离下一个重要日子</span>
+        <span class="hn-v">${esc(nextLabel)}</span>
+        <button class="hn-plus" data-act="home-date-manage" aria-label="管理重要日期">＋</button>
+      </div>
+    </div>`;
+
+    // —— 第二层：快速操作 ——
     html += `<div class="card"><h3>➕ 快速添加任务 <span class="tag">写任务名 + 选区域，直接记到今日</span></h3>
       <div class="home-add">
         <input id="home-task-title" placeholder="今天要做的任务…">
@@ -656,18 +733,11 @@
       </div></div>`;
 
     html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">冒出来的想法随手记</span></h3>
-      <div class="quick-add"><input id="home-temp" placeholder="临时事项 / 灵感 / 一句话…">
-        <button class="btn ghost sm" data-act="home-add-temp">记一下</button></div></div>`;
+      <div class="quick-add"><input id="home-temp" placeholder="临时事项 / 灵感 / 一句话…" readonly>
+        <button class="btn ghost sm" data-act="home-add-temp-modal">写一下</button></div>
+      <div class="tiny muted">点击输入框进入大面积备忘录编辑，取消不会保存</div></div>`;
 
-    // —— 第二优先：今日状态/打卡 + 拍摄计划 ——
-    html += `<div class="card"><h3>🌟 今日状态 <span class="tag">本月打卡天数</span></h3>
-      <div class="home-stats">
-        <div class="home-stat"><div class="n">${enDays.size}</div><div class="l">英语 · 本月 ${enDays.size} 天</div></div>
-        <div class="home-stat"><div class="n">${heDays.size}</div><div class="l">健康 · 本月 ${heDays.size} 天</div></div>
-        <div class="home-stat"><div class="n">${incDays.size}</div><div class="l">收入 · 本月 ${incDays.size} 天</div></div>
-      </div>
-      <button class="btn soft sm" data-act="nav" data-id="self" style="margin-top:10px">去打卡 →</button></div>`;
-
+    // —— 第三层：今天要推进 ——
     html += `<div class="card"><h3>🎬 拍摄计划 <span class="tag">内容宇宙 · 待制作 ${shoot.length} 条</span></h3>`;
     if (shoot.length) {
       html += `<div class="home-list">` + shoot.slice(0, 6).map((c) => {
@@ -679,34 +749,19 @@
     }
     html += `</div>`;
 
-    // —— 第三优先：重要日期 + 金句 + 成长痕迹 ——
-    html += `<div class="card"><h3>📅 重要日期 <span class="tag">${nextDate ? (nextDate.date >= td ? '最近一个' : '最近一个（已过期）') : '还没有'}</span></h3>`;
-    if (nextDate) {
-      const diff = Math.round((new Date(nextDate.date).getTime() - new Date(td).getTime()) / 86400000);
-      const dlabel = nextDate.date >= td ? (diff === 0 ? '就是今天' : '还有 ' + diff + ' 天') : '已过 ' + Math.abs(diff) + ' 天';
-      html += `<div class="home-date"><div class="home-date-d">${esc(nextDate.title)}</div>
-        <div class="home-date-m">${esc(nextDate.date)} · ${dlabel}</div></div>`;
-    } else {
-      html += `<div class="empty"><span class="em">📅</span>还没有重要日期，加一个纪念日或截止日吧。</div>`;
-    }
-    html += `<div class="quick-add" style="margin-top:8px"><input id="home-date-title" placeholder="日期标题，如 签证截止">
-      <input id="home-date-date" type="date" style="max-width:158px"></div>
-      <div class="home-add-acts" style="margin-top:8px"><button class="btn sm" data-act="home-add-date">添加</button></div></div>`;
-
-    html += `<div class="card home-quote"><div class="hq-ic">💡</div>
-      <div class="hq-t">${esc(q.t)}</div>
-      ${q.s ? `<div class="hq-s">— ${esc(q.s)}</div>` : ''}
-      <button class="mini ghost" data-act="home-quote" style="margin-top:6px">换一句</button></div>`;
-
+    // —— 第四层：我最近做成了什么（跳转成长地图，同源数据）——
+    const trace = s.tasks.filter((t) => t.done && !t.canceled)
+      .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
+      .slice(0, 6);
     html += `<div class="card"><h3>📚 最近成长痕迹 <span class="tag">已完成事项</span></h3>`;
     if (trace.length) {
       html += `<div class="home-list">` + trace.map((t) =>
-        `<div class="home-li" data-act="nav" data-id="today"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+        `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
       ).join('') + `</div>`;
     } else {
       html += `<div class="empty"><span class="em">📚</span>还没有完成的记录，完成一件事就会留在这里。</div>`;
     }
-    html += `<button class="btn soft sm" data-act="nav" data-id="today" style="margin-top:8px">看全部 →</button></div>`;
+    html += `<button class="btn soft sm" data-act="nav" data-id="growth" style="margin-top:8px">看全部 →</button></div>`;
 
     $('#view').innerHTML = html;
     setPage('首页');
@@ -717,59 +772,92 @@
     const t = $('#home-task-title');
     if (t) t.onkeydown = (e) => { if (e.key === 'Enter') homeAddTask(); };
     const tmp = $('#home-temp');
-    if (tmp) tmp.onkeydown = (e) => { if (e.key === 'Enter') homeAddTemp(); };
+    if (tmp) tmp.onkeydown = (e) => { if (e.key === 'Enter') homeAddTempModal(); };
   }
   function homeAddTask() {
     const inp = $('#home-task-title'); const sel = $('#home-task-cat');
     const v = inp ? inp.value.trim() : '';
     if (!v) { toast('先写个任务名吧 🌱'); return; }
     const cat = sel ? sel.value : '';
-    addTask('todo', v, today(), cat); // 复用现有任务逻辑：默认普通待办，进今日工作台
+    addTask('todo', v, today(), cat); // 复用现有任务逻辑：默认普通待办，进每日进步
     toast('已添加到今日待办 🌱');
   }
-  function homeAddTemp() {
-    const inp = $('#home-temp'); const v = inp ? inp.value.trim() : '';
-    if (!v) return;
-    addTask('temp', v); // 复用临时记录（type='temp'），同一套数据
-    toast('已记到临时记录 💭');
+  // 临时记录：点击进入大面积备忘录编辑（复用 tasks type='temp'，不建第二套）
+  function homeAddTempModal() {
+    openForm('临时记录', [{ key: 'text', label: '', type: 'textarea', placeholder: '临时事项 / 灵感 / 想法…', value: '' }], null, (fd) => {
+      const v = (fd.text || '').trim(); if (!v) { toast('没有内容，未保存'); return; }
+      addTask('temp', v); toast('已记到临时记录 💭');
+    });
   }
-  function homeAddDate() {
-    const t = $('#home-date-title'); const d = $('#home-date-date');
-    const v = t ? t.value.trim() : ''; const dv = d ? d.value : '';
-    if (!v || !dv) { toast('请填写标题和日期 📅'); return; }
-    const s = App.state;
-    if (!Array.isArray(s.dates)) s.dates = [];
-    s.dates.push({ id: uid(), title: v, date: dv, note: '' });
-    save(); render(); toast('已添加重要日期 📅');
+  // 今日份进步：点击即打卡（只新增当日记录，绝不删历史；已打卡不再重复新增）
+  function homeToggleCheckin(kind) {
+    if (kind !== 'english' && kind !== 'health') return;
+    const s = App.state; const td = today();
+    const arr = kind === 'english' ? s.english : s.health;
+    if (arr.some((x) => (x.date || '') === td)) { toast('今天已经打卡啦 ✓'); return; }
+    if (kind === 'english') arr.push({ id: uid(), type: '打卡', minutes: 0, date: td, note: '', checkin: true });
+    else arr.push({ id: uid(), sleep: '', exercise: '', state: '好', date: td, note: '', checkin: true });
+    save(); render(); toast('今日' + (kind === 'english' ? '英语' : '健康') + '已打卡 ✓');
+  }
+  // 添加备注（可选）：只更新当天记录，不删不改其他历史
+  function homeEditNote(kind) {
+    const s = App.state; const td = today();
+    const arr = kind === 'english' ? s.english : s.health;
+    const ent = arr.find((x) => (x.date || '') === td && x.checkin) || arr.find((x) => (x.date || '') === td);
+    if (!ent) { toast('今天还没打卡，先点方框 ✓'); return; }
+    const fields = kind === 'english'
+      ? [{ key: 'minutes', label: '学习时长（分钟，可选）', value: ent.minutes || '' }, { key: 'note', label: '备注（可选）', type: 'textarea', value: ent.note || '' }]
+      : [{ key: 'note', label: '备注（可选）', type: 'textarea', value: ent.note || '' }];
+    openForm('添加备注', fields, null, (fd) => {
+      if (kind === 'english') ent.minutes = Number(fd.minutes) || 0;
+      ent.note = fd.note || '';
+      save(); render(); toast('已保存备注 🌿');
+    });
+  }
+  // 重要日期管理：系统节假日只读内置，用户自定义存 s.dates（可增删，不碰系统数据）
+  function homeDateManage() {
+    const s = App.state; if (!Array.isArray(s.dates)) s.dates = [];
+    const list = s.dates.slice().sort((a, b) => a.date.localeCompare(b.date)).map((d) =>
+      `<div class="home-dm-row"><span class="hm-t">${esc(d.title)} · ${esc(d.date)}</span><button class="mini ghost" data-act="home-del-date" data-id="${d.id}">删除</button></div>`
+    ).join('') || '<div class="muted tiny">还没有自定义重要日期，点下面添加。</div>';
+    showModal(`<h3>📅 重要日期管理</h3>
+      <div class="home-dm-tip">系统节假日（元旦/春节/清明/劳动/端午/中秋/国庆等）已内置自动显示，不可修改。</div>
+      <div class="home-dm-list">${list}</div>
+      <div class="home-dm-add">
+        <input id="dm-title" placeholder="标题，如 生日 / 签证截止">
+        <input id="dm-date" type="date">
+        <button class="btn sm" data-act="home-dm-add">添加</button>
+      </div>
+      <div class="modal-actions"><button class="btn ghost" data-act="close-modal">关闭</button></div>`);
   }
 
   // 今日金句：内置中英文池，按日确定性切换（day hash），不写 state、不调第三方 API。
   // 「换一句」只在本次会话内叠加偏移（App.homeQuoteShift），不持久化。
   const HOME_QUOTES = [
-    { t: '种一棵树最好的时间是十年前，其次是现在。', s: '谚语' },
-    { t: '慢慢来，比较快。', s: '李宗盛' },
-    { t: '你只管努力，剩下的交给时间。', s: '' },
-    { t: '今天的努力，是幸运的伏笔。', s: '' },
-    { t: '与其担心未来，不如现在好好努力。', s: '' },
-    { t: '把平凡的事做好，就是不平凡。', s: '' },
-    { t: '你不必很厉害才能开始，但你必须开始才能很厉害。', s: '' },
-    { t: '生活明朗，万物可爱。', s: '' },
-    { t: '所有伟大，都源于一个勇敢的开始。', s: '' },
-    { t: '心之所向，素履以往。', s: '' },
-    { t: '日拱一卒，功不唐捐。', s: '胡适' },
-    { t: '成长就是把哭声调成静音的过程。', s: '' },
-    { t: 'The secret of getting ahead is getting started.', s: 'Mark Twain' },
-    { t: 'It does not matter how slowly you go as long as you do not stop.', s: 'Confucius' },
-    { t: 'Small progress is still progress.', s: '' },
-    { t: 'Dream big, start small, act now.', s: '' },
-    { t: 'You are never too old to set another goal.', s: 'C.S. Lewis' },
-    { t: 'Well done is better than well said.', s: 'Benjamin Franklin' },
-    { t: 'Do the hard things first.', s: '' },
-    { t: 'Consistency is what transforms average into excellence.', s: '' },
-    { t: 'Fall seven times, stand up eight.', s: '日本谚语' },
-    { t: 'Action is the foundational key to all success.', s: 'Pablo Picasso' },
-    { t: 'Keep going. Everything you need will come to you.', s: '' },
-    { t: 'Today is a perfect day to begin.', s: '' },
+    { zh: '种一棵树最好的时间是十年前，其次是现在。', en: 'The best time to plant a tree was ten years ago. The second best time is now.' },
+    { zh: '慢慢来，比较快。', en: 'Slow is smooth, and smooth is fast.' },
+    { zh: '你只管努力，剩下的交给时间。', en: 'Just keep going, and let time take care of the rest.' },
+    { zh: '今天的努力，是幸运的伏笔。', en: "Today's effort is the foreshadowing of tomorrow's luck." },
+    { zh: '与其担心未来，不如现在好好努力。', en: 'Instead of worrying about the future, work hard right now.' },
+    { zh: '把平凡的事做好，就是不平凡。', en: 'Doing ordinary things well is what makes them extraordinary.' },
+    { zh: '你不必很厉害才能开始，但你必须开始才能很厉害。', en: "You don't have to be great to start, but you have to start to be great." },
+    { zh: '生活明朗，万物可爱。', en: 'Life is bright, and everything in it is lovely.' },
+    { zh: '所有伟大，都源于一个勇敢的开始。', en: 'All greatness begins with one brave first step.' },
+    { zh: '心之所向，素履以往。', en: 'Go wherever your heart leads, even in the simplest shoes.' },
+    { zh: '日拱一卒，功不唐捐。', en: 'A pawn a day — no effort is ever wasted. (胡适)' },
+    { zh: '成长，就是把哭声调成静音的过程。', en: 'Growing up is turning the volume of your tears all the way down.' },
+    { zh: '领先的唯一秘诀，就是开始行动。', en: 'The secret of getting ahead is simply getting started.' },
+    { zh: '只要不停下，走得慢也没关系。', en: 'It does not matter how slowly you go, as long as you do not stop.' },
+    { zh: '小小的进步，也是进步。', en: 'Small progress is still progress.' },
+    { zh: '大胆梦想，从小处着手，立刻行动。', en: 'Dream big, start small, act now.' },
+    { zh: '你永远不会太老，无法再定一个新目标。', en: 'You are never too old to set another goal.' },
+    { zh: '做得好，胜过说得好。', en: 'Well done is better than well said.' },
+    { zh: '先做最难的事。', en: 'Do the hard things first.' },
+    { zh: '坚持，是把普通变成卓越的力量。', en: 'Consistency is what transforms average into excellence.' },
+    { zh: '七次跌倒，八次站起。', en: 'Fall seven times, stand up eight.' },
+    { zh: '行动，是成功最根本的钥匙。', en: 'Action is the foundational key to all success.' },
+    { zh: '继续走，你需要的一切都会到来。', en: 'Keep going. Everything you need will come to you.' },
+    { zh: '今天，就是开始的好日子。', en: 'Today is a perfect day to begin.' },
   ];
   function homeQuote() {
     const key = today();
@@ -870,6 +958,21 @@
       block += `</div>`;
       html += block;
     });
+
+    // —— 最近成长痕迹：与首页同源，读 tasks.filter(done) ——
+    const trace = s.tasks.filter((t) => t.done && !t.canceled)
+      .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
+      .slice(0, 8);
+    html += `<div class="card"><h3>📚 最近成长痕迹 <span class="tag">已完成事项</span></h3>`;
+    if (trace.length) {
+      html += `<div class="home-list">` + trace.map((t) =>
+        `<div class="home-li"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+      ).join('') + `</div>`;
+    } else {
+      html += `<div class="empty"><span class="em">📚</span>还没有完成的记录，完成一件事就会留在这里。</div>`;
+    }
+    html += `</div>`;
+
     $('#view').innerHTML = html;
     setPage('成长地图');
   }
@@ -1897,10 +2000,22 @@
 
       /* ---- 首页（个人工作驾驶舱）---- */
       case 'home-add-task': homeAddTask(); break;
-      case 'home-add-temp': homeAddTemp(); break;
-      case 'home-add-date': homeAddDate(); break;
       case 'home-clear-task': { const inp = $('#home-task-title'); if (inp) inp.value = ''; const sel = $('#home-task-cat'); if (sel) sel.value = 'edu'; break; }
       case 'home-quote': App.homeQuoteShift = (App.homeQuoteShift || 0) + 1; render(); break;
+      case 'home-toggle-checkin': homeToggleCheckin(el.dataset.kind); break;
+      case 'home-edit-note': homeEditNote(el.dataset.kind); break;
+      case 'home-date-manage': homeDateManage(); break;
+      case 'home-del-date': { remove(s.dates, id); save(); homeDateManage(); break; }
+      case 'home-dm-add': {
+        const ti = $('#dm-title'), di = $('#dm-date');
+        const tv = ti ? ti.value.trim() : '', dv = di ? di.value : '';
+        if (!tv || !dv) { toast('请填写标题和日期'); break; }
+        if (!Array.isArray(s.dates)) s.dates = [];
+        s.dates.push({ id: uid(), title: tv, date: dv, note: '' });
+        save(); homeDateManage(); toast('已添加重要日期 📅');
+        break;
+      }
+      case 'home-add-temp-modal': homeAddTempModal(); break;
       case 'toggle-task': { const t = find(s.tasks, id); if (t) { t.done = !t.done; if (t.done) t.doneAt = today(); save(); render(); } break; }
       case 'edit-task': editTask(id); break;
       case 'del-task': if (trashItem('tasks', id, 'task')) { save(); render(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -2353,7 +2468,7 @@
     renderNav();
     render();
     const cm = MODULES.find((x) => x.id === App.current);
-    setPage(cm ? cm.name : '今日工作台');
+    setPage(cm ? cm.name : '每日进步');
     $('#pageDate').textContent = today() + ' · ' + ['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()];
     booted = true;
   }

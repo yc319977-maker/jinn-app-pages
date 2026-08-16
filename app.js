@@ -193,11 +193,9 @@
     { id: 'today', name: '每日进步', short: '进步', icon: '🌱', home: true },
     { id: 'month', name: '月度成长', short: '月历', icon: '📅' },
     { id: 'growth', name: '成长地图', short: '成长', icon: '🗺️' },
-    { id: 'inspiration', name: '灵感站', short: '灵感', icon: '💡' },
     { id: 'content', name: '婧婧内容宇宙', short: '内容', icon: '🎬' },
     { id: 'crm', name: '教育 CRM', short: '教育', icon: '🌿' },
     { id: 'ecom', name: '电商实验室', short: '电商', icon: '🛒' },
-    { id: 'self', name: '个人成长', short: '自我', icon: '🌟' },
     { id: 'aiprofile', name: 'AI 档案', short: 'AI', icon: '🤖' },
     { id: 'trash', name: '回收站', short: '回收站', icon: '🗑️' },
   ];
@@ -1236,14 +1234,146 @@
   /* ============================================================
    *  成长地图
    * ============================================================ */
+  /* ============================================================
+   *  成长地图 V2 —— 真实记录 → 聚合 → AI 整理 → 你确认（AI 不创造）
+   * ============================================================ */
+  // A 顶部轻量概览：一句话动态总结，全部来自真实记录
+  function buildGrowthOverview() {
+    const s = App.state;
+    const done = s.tasks.filter((t) => t.done && !t.canceled).length;
+    const pub = s.content.filter((c) => c.status === '已发布').length;
+    const rev = s.reviews.length;
+    const dec = s.decisions.length;
+    const yrs = s.growth.filter((g) => g.type === 'year').length;
+    const parts = [];
+    if (done) parts.push(done + ' 条已完成记录');
+    if (pub) parts.push(pub + ' 个选题已发布');
+    if (rev) parts.push(rev + ' 次复盘');
+    if (dec) parts.push(dec + ' 个决策');
+    if (yrs) parts.push(yrs + ' 个年度方向');
+    if (!parts.length) return '最近暂无足够记录形成成长判断，先去「每日进步」记一条完成的小事 🌱';
+    return '基于你的真实记录：已有 ' + parts.join('、') + '。成长是积累出来的，不是想出来的。';
+  }
+
+  // B 能力资产：只从真实记录归纳候选，每条带证据链；状态由你确认
+  function discoverAssets() {
+    const s = App.state;
+    const cands = [];
+    const pub = s.content.filter((c) => c.status === '已发布');
+    if (pub.length) cands.push({ key: 'content-pub', name: '内容持续产出（已发布 ' + pub.length + ' 条）',
+      evidence: pub.slice(0, 3).map((c) => ({ mod: 'content', id: c.id, label: c.title })) });
+    const enMin = s.english.reduce((a, e) => a + (Number(e.minutes) || 0), 0);
+    if (enMin >= 60) cands.push({ key: 'english', name: '英语持续输入（累计 ' + num(enMin / 60, 1) + ' 小时）',
+      evidence: s.english.slice(0, 3).map((e) => ({ mod: 'home', id: '', label: e.date + ' · ' + e.minutes + ' 分钟' })) });
+    if (s.customers.length) cands.push({ key: 'edu-crm', name: '教育咨询获客（' + s.customers.length + ' 位客户）',
+      evidence: s.customers.slice(0, 3).map((c) => ({ mod: 'crm', id: c.id, label: c.nickname || '客户' })) });
+    const catCnt = {};
+    s.tasks.forEach((t) => { if (t.cat) catCnt[t.cat] = (catCnt[t.cat] || 0) + 1; });
+    const top = Object.keys(catCnt).sort((a, b) => catCnt[b] - catCnt[a])[0];
+    if (top && catCnt[top] >= 5) cands.push({ key: 'cat-' + top, name: '高频处理「' + catName(top) + '」类事务（' + catCnt[top] + ' 次）',
+      evidence: s.tasks.filter((t) => t.cat === top).slice(0, 3).map((t) => ({ mod: 'today', id: t.id, label: t.title })) });
+    const decDone = s.decisions.filter((d) => d.result);
+    if (decDone.length) cands.push({ key: 'decision', name: '能落地决策并复盘（' + decDone.length + ' 个决策有结果）',
+      evidence: decDone.slice(0, 3).map((d) => ({ mod: 'rd', id: d.id, label: d.question })) });
+    return cands;
+  }
+
+  // AI 成长复盘：4 个问题，全部基于真实数据，每条带查看依据
+  function buildAiReview() {
+    const s = App.state;
+    const done = s.tasks.filter((t) => t.done && !t.canceled);
+    const pub = s.content.filter((c) => c.status === '已发布');
+    const dec = s.decisions;
+    const q = [];
+    q.push({ t: '最近在坚持做哪些事？',
+      a: done.length ? ('已完成 ' + done.length + ' 条记录，说明你在持续行动。') : '暂无明显持续记录，可以从每天完成 1 件小事开始。',
+      ev: done.slice(0, 3).map((t) => ({ mod: 'today', id: t.id, label: t.title })) });
+    q.push({ t: '哪些事有了进展？',
+      a: pub.length ? ('已有 ' + pub.length + ' 个选题发布，内容方向在跑通。') : (s.growth.some((g) => (g.progress || 0) > 0) ? '年度方向里有进度在推进。' : '暂时看不出明显进展，建议给一个方向设小目标。'),
+      ev: pub.length ? pub.slice(0, 3).map((c) => ({ mod: 'content', id: c.id, label: c.title })) : [] });
+    q.push({ t: '我做过哪些重要决定？',
+      a: dec.length ? ('记录了 ' + dec.length + ' 个决策，愿意为选择负责。') : '还没有记录决策，重要决定写下来能避免反复纠结。',
+      ev: dec.slice(0, 3).map((d) => ({ mod: 'rd', id: d.id, label: d.question })) });
+    q.push({ t: '下一步可以加强什么？',
+      a: '基于现有记录，先把「坚持的事」做得更稳，再补「还没开始」的部分。不假装知道答案，你来定。',
+      ev: [] });
+    return q;
+  }
+
+  // 证据链：可点击跳到原始记录
+  function evLinks(ev) {
+    if (!ev || !ev.length) return '<span class="tiny muted">暂无具体记录可查</span>';
+    return ev.map((e) => `<button class="mini ghost ev-link" data-act="ev-link" data-mod="${esc(e.mod)}" data-evid="${esc(e.id || '')}">查看依据：${esc(e.label || '记录')}</button>`).join(' ');
+  }
+
   function renderGrowth() {
     const s = App.state;
-    const years = s.growth.filter((g) => g.type === 'year');
     const bar = (p) => `<div class="bar"><span style="width:${Math.max(0, Math.min(100, p || 0))}%"></span></div>`;
-    let html = `<div class="card"><h3>🗺️ 成长地图 <span class="tag">记录过程，不只看结果</span></h3>
-      <div class="tiny muted" style="margin-bottom:10px">年度方向 → 月度目标 → 具体行动，每一步都有进度。</div>
+    let html = `<div class="card"><h3>🗺️ 成长地图 <span class="tag">真实记录，AI 只整理</span></h3>
+      <div class="tiny muted" style="margin-bottom:8px">${esc(buildGrowthOverview())}</div></div>`;
+
+    // —— B 能力资产 ——
+    const cands = discoverAssets();
+    const storedMap = {};
+    s.growth.filter((g) => g.type === 'asset').forEach((g) => { storedMap[g.key] = g; });
+    let assetHtml = `<div class="card"><h3>🧠 能力资产 <span class="tag">AI 发现 · 你来确认</span></h3>
+      <div class="tiny muted" style="margin-bottom:8px">只从你真实记录里归纳，每条都能点开看依据。不确定的不写进资产。</div>`;
+    const rows = cands.map((c) => ({ c, g: storedMap[c.key] })).concat(
+      s.growth.filter((g) => g.type === 'asset' && !cands.find((c) => c.key === g.key))
+        .map((g) => ({ c: { key: g.key, name: g.title, evidence: g.evidence || [] }, g }))
+    );
+    if (!rows.length) {
+      assetHtml += `<div class="empty"><span class="em">🧠</span>记录不足，暂不形成能力资产。先多记一些真实完成的事。</div></div>`;
+    } else {
+      rows.forEach(({ c, g }) => {
+        const st = g ? g.status : 'found';
+        const badge = st === 'confirmed' ? '<span class="badge s2">已确认</span>' : st === 'invalid' ? '<span class="badge s0">暂不成立</span>' : '<span class="badge s3">AI 发现 · 待确认</span>';
+        assetHtml += `<div class="asset-item"><div class="li-top"><div class="li-title">${esc(c.name)}</div>${badge}</div>
+          <div class="ev-row">${evLinks(c.evidence)}</div>
+          <div class="row-actions" style="margin-top:6px">`;
+        if (st === 'found') {
+          assetHtml += `<button class="mini green" data-act="confirm-asset" data-key="${esc(c.key)}" data-name="${esc(c.name)}">确认记入能力</button>
+            <button class="mini ghost" data-act="invalid-asset" data-key="${esc(c.key)}" data-name="${esc(c.name)}">暂不成立</button>`;
+        } else if (st === 'confirmed') {
+          assetHtml += `<button class="mini ghost" data-act="del-asset" data-id="${g.id}">移除</button>`;
+        } else {
+          assetHtml += `<button class="mini ghost" data-act="del-asset" data-id="${g.id}">重新评估</button>`;
+        }
+        assetHtml += `</div></div>`;
+      });
+      assetHtml += `</div>`;
+    }
+    html += assetHtml;
+
+    // —— C 项目 / 商业履历：仅真实记录 ——
+    const ecom = s.ecommerce || [];
+    const decs = s.decisions;
+    const pub = s.content.filter((c) => c.status === '已发布');
+    let projHtml = `<div class="card"><h3>🏆 项目 / 商业履历 <span class="tag">仅真实记录</span></h3>`;
+    if (!ecom.length && !decs.length && !pub.length) {
+      projHtml += `<div class="empty"><span class="em">🏆</span>暂无记录。做过的事、做出的决定，记下来就是履历。</div></div>`;
+    } else {
+      if (ecom.length) {
+        projHtml += `<div class="li-sub" style="margin:6px 0 2px">🛒 电商实践（${ecom.length}）</div>`;
+        ecom.slice(0, 6).forEach((e) => { projHtml += `<div class="list-item"><div class="li-top"><div class="li-title">${esc(e.title)}</div><span class="badge">${esc(e.category || '其他')}</span></div><div class="row-actions" style="margin-top:4px"><button class="mini ghost ev-link" data-act="ev-link" data-mod="ecom" data-evid="${esc(e.id)}">查看依据</button></div></div>`; });
+      }
+      if (decs.length) {
+        projHtml += `<div class="li-sub" style="margin:8px 0 2px">🧭 关键决策（${decs.length}）</div>`;
+        decs.slice(0, 6).forEach((d) => { projHtml += `<div class="list-item"><div class="li-top"><div class="li-title">${esc(d.question)}</div></div><div class="li-sub">${d.decision ? '决定：' + esc(d.decision) : '（未填决定）'}</div><div class="row-actions" style="margin-top:4px"><button class="mini ghost ev-link" data-act="ev-link" data-mod="rd" data-evid="${esc(d.id)}">查看依据</button></div></div>`; });
+      }
+      if (pub.length) {
+        projHtml += `<div class="li-sub" style="margin:8px 0 2px">🎬 内容作品（${pub.length}）</div>`;
+        pub.slice(0, 6).forEach((c) => { projHtml += `<div class="list-item"><div class="li-top"><div class="li-title">${esc(c.title)}</div></div><div class="row-actions" style="margin-top:4px"><button class="mini ghost ev-link" data-act="ev-link" data-mod="content" data-evid="${esc(c.id)}">查看依据</button></div></div>`; });
+      }
+      projHtml += `</div>`;
+    }
+    html += projHtml;
+
+    // —— D 我的成长路径：年度 → 月度 → 行动 + 我的方法 ——
+    const years = s.growth.filter((g) => g.type === 'year');
+    let pathHtml = `<div class="card"><h3>🧭 我的成长路径 <span class="tag">方向 → 目标 → 行动</span></h3>
       <button class="btn sm" data-act="add-growth" data-type="year">+ 添加年度方向</button></div>`;
-    if (!years.length) html += `<div class="empty"><span class="em">🌱</span>先写下今年的方向吧，比如「建立稳定教育获客体系」。</div>`;
+    if (!years.length) pathHtml += `<div class="empty"><span class="em">🌱</span>先写下今年的方向吧，比如「建立稳定教育获客体系」。</div>`;
     years.forEach((y) => {
       const months = s.growth.filter((g) => g.type === 'month' && g.parent === y.id);
       let block = `<div class="card"><div style="display:flex;align-items:center;gap:10px">
@@ -1269,18 +1399,43 @@
         block += `</div>`;
       });
       block += `</div>`;
-      html += block;
+      pathHtml += block;
     });
+    const methods = s.growth.filter((g) => g.type === 'method');
+    let methodHtml = `<div class="card"><h3>🔧 我的方法 <span class="tag">模仿 → 拆解 → 实践 → 验证</span></h3>
+      <div class="tiny muted" style="margin-bottom:6px">只记你真正在用的办法，别列「想学」的。</div>
+      <button class="btn sm" data-act="add-method">+ 添加方法</button></div>`;
+    if (!methods.length) methodHtml += `<div class="empty"><span class="em">🔧</span>还没有记录方法。一个被你反复验证有效的动作，就是方法。</div>`;
+    methods.forEach((mth) => {
+      const st = mth.status || 'explore';
+      const stText = st === 'formed' ? '已形成' : st === 'verify' ? '验证中' : '探索中';
+      const stCls = st === 'formed' ? 's2' : st === 'verify' ? 's3' : 's0';
+      methodHtml += `<div class="method-item"><div class="li-top"><div class="li-title">${esc(mth.title)}</div><span class="badge ${stCls}">${stText}</span></div>
+        ${mth.note ? `<div class="li-sub">${esc(mth.note)}</div>` : ''}
+        <div class="row-actions" style="margin-top:6px">
+          <button class="mini ghost" data-act="edit-method" data-id="${mth.id}">编辑</button>
+          <button class="mini ghost" data-act="del-growth" data-id="${mth.id}">删除</button></div></div>`;
+    });
+    html += pathHtml + methodHtml;
 
-    // —— 最近成长痕迹：与首页同源同逻辑（数据源 / 折叠标志 / 数量 / 查看全部 完全一致）；展开显示全部，不做 6 条上限 ——
+    // —— AI 成长复盘（轻量入口）——
+    const aiOpen = App.folds['aireview'];
+    html += `<div class="card"><div style="display:flex;align-items:center;gap:10px">
+      <h3 style="flex:1;margin:0">🪞 AI 成长复盘</h3>
+      <button class="btn soft sm" data-act="toggle-fold" data-id="aireview">${aiOpen ? '收起' : '点击分析'}</button></div>`;
+    if (aiOpen) {
+      html += buildAiReview().map((x) => `<div class="ai-review"><div class="ar-q">${esc(x.t)}</div><div class="ar-a">${esc(x.a)}</div><div class="ev-row">${evLinks(x.ev)}</div></div>`).join('');
+    }
+    html += `</div>`;
+
+    // —— E 成长痕迹：与首页同源（数据源 / 折叠 / 数量 / 看全部 完全一致）——
     const traceAll = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')));
-    const tracePreview = traceAll.slice(0, 6); // 仅折叠态摘要用；展开渲染全部 traceAll
+    const tracePreview = traceAll.slice(0, 6);
     const traceOpen = App.folds['trace'];
     html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="trace">
       <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span>📚 最近成长痕迹
       <span class="tag">${traceAll.length} 条</span></h3>`;
-    // 「看全部」常驻：折叠态也可点；点击展开成长痕迹并进入成长地图（与首页同源 trace-see-all，显示全部）
     html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="trace-see-all">看全部 →</button></div>`;
     if (traceOpen) {
       if (traceAll.length) {
@@ -1295,8 +1450,43 @@
     }
     html += `</div>`;
 
+    // —— 复盘与决策（轻量重定位入口，原「个人成长」合并于此）——
+    html += `<div class="card rd-entry"><h3>🪞 复盘与决策</h3>
+      <div class="tiny muted" style="margin-bottom:8px">「个人成长」入口已合并到这里：复盘与决策都在。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" data-act="open-rd" data-view="review">🪞 成长复盘（${s.reviews.length}）</button>
+        <button class="btn sm" data-act="open-rd" data-view="decision">🧭 决策库（${s.decisions.length}）</button>
+        <button class="btn soft sm" data-act="add-review" data-type="day">+ 写今日复盘</button>
+        <button class="btn soft sm" data-act="add-decision">+ 记录决策</button>
+      </div></div>`;
+
     $('#view').innerHTML = html;
     setPage('成长地图');
+  }
+
+  // 复盘与决策独立屏幕（不在导航栏，从成长地图进入）
+  function renderRD() {
+    const s = App.state;
+    const tabs = `<div class="tabs">
+      <button class="tab ${App.rdView !== 'decision' ? 'active' : ''}" data-act="rd-tab" data-id="review">🪞 复盘</button>
+      <button class="tab ${App.rdView === 'decision' ? 'active' : ''}" data-act="rd-tab" data-id="decision">🧭 决策</button>
+      <button class="tab" data-act="nav" data-id="growth">← 返回成长地图</button>
+    </div>`;
+    const inner = App.rdView === 'decision' ? renderSelfDecision() : renderSelfReview();
+    $('#view').innerHTML = tabs + inner;
+    setPage('复盘与决策');
+  }
+
+  function editMethod(id) {
+    const m = id ? find(App.state.growth, id) : { type: 'method', status: 'explore' };
+    openForm(id ? '编辑方法' : '添加方法', [
+      { key: 'title', label: '方法名称（你真正在用的）', value: m.title, type: 'textarea' },
+      { key: 'status', label: '状态', type: 'select', options: [{ v: 'explore', t: '探索中' }, { v: 'verify', t: '验证中' }, { v: 'formed', t: '已形成' }], value: m.status || 'explore' },
+      { key: 'note', label: '怎么用 / 步骤（模仿 → 拆解 → 实践 → 验证）', value: m.note, type: 'textarea' },
+    ], null, (fd) => {
+      if (id) Object.assign(m, fd); else App.state.growth.push(Object.assign({ id: uid(), type: 'method' }, fd));
+      save(); renderGrowth();
+    });
   }
 
   /* ============================================================
@@ -2380,6 +2570,33 @@
       case 'edit-growth': editGrowth(id); break;
       case 'del-growth': if (trashItem('growth', id, 'other')) { save(); renderGrowth(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
+      /* ---- 能力资产（AI 发现 · 你确认）---- */
+      case 'confirm-asset': {
+        const key = el.dataset.key, name = el.dataset.name;
+        const ex = s.growth.find((g) => g.type === 'asset' && g.key === key);
+        if (ex) ex.status = 'confirmed'; else s.growth.push({ id: uid(), type: 'asset', key, title: name, status: 'confirmed', evidence: [] });
+        save(); renderGrowth(); toast('已记入能力资产 🧠'); break;
+      }
+      case 'invalid-asset': {
+        const key = el.dataset.key, name = el.dataset.name;
+        const ex = s.growth.find((g) => g.type === 'asset' && g.key === key);
+        if (ex) ex.status = 'invalid'; else s.growth.push({ id: uid(), type: 'asset', key, title: name, status: 'invalid', evidence: [] });
+        save(); renderGrowth(); toast('已标记为暂不成立'); break;
+      }
+      case 'del-asset': { remove(s.growth, id); save(); renderGrowth(); break; }
+      /* ---- 我的方法 ---- */
+      case 'add-method': editMethod(null); break;
+      case 'edit-method': editMethod(id); break;
+      /* ---- 复盘与决策（重定位入口）---- */
+      case 'rd-tab': App.rdView = id; renderRD(); break;
+      case 'open-rd': App.rdView = id; navigate('rd'); break;
+      case 'ev-link': {
+        const mod = el.dataset.mod;
+        if (mod === 'rd') { App.rdView = 'decision'; navigate('rd'); }
+        else navigate(mod);
+        break;
+      }
+
       case 'add-insp': { const inp = $('#qa-insp'); const v = inp.value.trim(); if (v) { addInsp(v); inp.value = ''; } break; }
       case 'confirm-insp': confirmInsp(id); break;
       case 'del-insp': if (trashItem('inspirations', id, 'inspiration')) { save(); renderInspiration(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -2411,8 +2628,6 @@
       case 'edit-ecom': editEcom(id); break;
       case 'del-ecom': if (trashItem('ecommerce', id, 'other')) { save(); renderEcom(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
-      case 'self-tab': selfView = id; renderSelf(); break;
-
       case 'add-english': addEnglish(); break;
       case 'del-english': if (trashItem('english', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
       case 'add-health': addHealth(); break;
@@ -2424,11 +2639,11 @@
       case 'add-review': editReview(null, type); break;
       case 'edit-review': editReview(id); break;
       case 'ai-review': aiReview(id); break;
-      case 'del-review': if (trashItem('reviews', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+      case 'del-review': if (trashItem('reviews', id, 'other')) { save(); render(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       case 'add-decision': editDecision(null); break;
       case 'edit-decision': editDecision(id); break;
-      case 'del-decision': if (trashItem('decisions', id, 'other')) { save(); renderSelf(); toast('已移入回收站，可以随时恢复 🌿'); } break;
+      case 'del-decision': if (trashItem('decisions', id, 'other')) { save(); render(); toast('已移入回收站，可以随时恢复 🌿'); } break;
 
       /* ---- 回收站操作 ---- */
       case 'trash-filter': App.trashFilter = id; renderTrash(); break;
@@ -2549,18 +2764,18 @@
     const r = id ? find(App.state.reviews, id) : { type: type || 'day', date: today() };
     openForm(id ? '编辑复盘' : (r.type === 'day' ? '今日复盘' : r.type === 'week' ? '每周复盘' : '每月复盘'), reviewFields(r), null, (fd) => {
       if (id) Object.assign(r, fd); else App.state.reviews.push(Object.assign({ id: uid(), type: r.type }, fd));
-      save(); renderSelf();
+      save(); render();
     });
   }
   function aiReview(id) {
     const r = find(App.state.reviews, id); if (!r) return;
-    r.ai = analyzeReview(r); save(); renderSelf(); toast('AI 已给出外部视角 🪞');
+    r.ai = analyzeReview(r); save(); render(); toast('AI 已给出外部视角 🪞');
   }
   function editDecision(id) {
     const d = id ? find(App.state.decisions, id) : { date: today() };
     openForm(id ? '编辑决策' : '记录决策', decisionFields(d), null, (fd) => {
       if (id) Object.assign(d, fd); else App.state.decisions.push(Object.assign({ id: uid() }, fd));
-      save(); renderSelf();
+      save(); render();
     });
   }
 
@@ -2713,9 +2928,9 @@
   /* ---------------- 渲染分发 ---------------- */
   function render() {
     const map = {
-      today: renderToday, month: renderMonth, growth: renderGrowth, inspiration: renderInspiration,
-      content: renderContent, crm: renderCRM, ecom: renderEcom, self: renderSelf,
-      aiprofile: renderAIProfile, trash: renderTrash, home: renderHome,
+      today: renderToday, month: renderMonth, growth: renderGrowth,
+      content: renderContent, crm: renderCRM, ecom: renderEcom,
+      aiprofile: renderAIProfile, trash: renderTrash, home: renderHome, rd: renderRD,
     };
     (map[App.current] || renderToday)();
     renderNav(); // 顶部数字气泡刷新

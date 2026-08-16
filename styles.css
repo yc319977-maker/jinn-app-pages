@@ -512,6 +512,21 @@ header.topbar {
 .home-li-t { flex: 1; min-width: 0; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 重要日期 */
 .home-date { background: var(--bg-soft); border-radius: 13px; padding: 12px 14px; }
+
+/* ============================================================
+   成长地图 V2（能力资产 / 项目履历 / 我的方法 / AI 复盘 / 复盘与决策）
+   ============================================================ */
+.badge.s0 { background: #ECECEC; color: #8A8A8A; }
+.asset-item, .method-item { background: var(--bg-soft); border-radius: 13px; padding: 11px 13px; margin-bottom: 8px; }
+.asset-item .li-top, .method-item .li-top { display: flex; align-items: center; gap: 8px; }
+.asset-item .li-title, .method-item .li-title { font-weight: 600; flex: 1; word-break: break-word; }
+.asset-item .li-sub, .method-item .li-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 5px; white-space: pre-wrap; }
+.ev-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ev-row .ev-link { flex: 0 0 auto; }
+.ai-review { background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+.ai-review .ar-q { font-weight: 700; color: var(--ink); font-size: 13.5px; }
+.ai-review .ar-a { font-size: 13px; color: var(--ink-soft); margin: 4px 0 2px; line-height: 1.55; white-space: pre-wrap; }
+.rd-entry .btn { flex: 0 0 auto; }
 .home-date-d { font-size: 15px; font-weight: 700; }
 .home-date-m { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
 /* 今日金句 */

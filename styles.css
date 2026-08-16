@@ -120,6 +120,23 @@ header.topbar {
 .hero .big { font-size: 22px; font-weight: 800; margin: 4px 0 2px; }
 .hero .sub { color: var(--ink-soft); font-size: 13.5px; }
 
+/* 每日进步：一个核心工作卡片（合并原 hero + 「🌟 今日进度」；同源 tasks） */
+.daily-core { padding-bottom: 18px; }
+.daily-core-head {
+  background: linear-gradient(135deg, #FFF6E9, #F1F5E8);
+  border: 1px solid #F6E6CF; border-radius: 14px;
+  padding: 18px; margin: 0 0 14px;
+}
+.daily-core-head .hi { font-size: 13px; color: var(--ink-soft); }
+.daily-core-head .big { font-size: 22px; font-weight: 800; margin: 4px 0 2px; line-height: 1.25; }
+.daily-core-head .sub { color: var(--ink-soft); font-size: 13.5px; margin-top: 2px; }
+/* 卡片内子区块与首部左右对齐 */
+.daily-core > .sub-h { padding: 0 2px; }
+.daily-core .quick-add,
+.daily-core > div[style*="margin-top:8px"] { padding: 0 2px; }
+.daily-core .empty,
+.daily-core .task-row { padding-left: 2px; padding-right: 2px; }
+
 .task-row {
   display: flex; align-items: flex-start; gap: 11px; padding: 11px 4px;
   border-bottom: 1px dashed var(--line);

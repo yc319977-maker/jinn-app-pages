@@ -610,16 +610,15 @@
     const pending = tasks.filter((t) => t.date < td && !t.done);
     const doneToday = tasks.filter((t) => t.done && (t.doneAt || t.date) === td);
 
-    let html = `
-    <div class="hero">
-      <div class="hi">${greet()}</div>
-      <div class="big">今天，先推进最重要的事</div>
-      <div class="sub">${td} · 你正在一点点积累，努力正在留下痕迹</div>
-    </div>`;
+    // —— 每日进步：一个核心工作卡片（合并原 hero + 「🌟 今日进度」；同源 tasks，结构无图片占位）——
+    let html = `<div class="card daily-core">
+      <div class="daily-core-head">
+        <div class="hi">${greet()}</div>
+        <div class="big">今天，先推进最重要的事</div>
+        <div class="sub">${td} · 今日进度：完成 ${doneToday.length} · 必做 ${core.length} · 点方框可切换</div>
+      </div>`;
 
-    // 今日进度：合并「今天完成」+「今日必做」（同源 tasks，不重复显示任务）
-    html += `<div class="card done-top">
-      <h3>🌟 今日进度 <span class="tag">完成 ${doneToday.length} · 必做 ${core.length} · 点方框可切换</span></h3>`;
+    // ✅ 今天完成
     if (doneToday.length) {
       html += `<div class="sub-h">✅ 今天完成</div>`;
       html += doneToday.slice(0, 8).map(taskRow).join('');
@@ -627,26 +626,27 @@
     } else {
       html += `<div class="empty"><span class="em">🌿</span>今天还没完成任何事，从下面任一项开始吧。</div>`;
     }
+
+    // 🎯 今日必做（核心推进）
     if (core.length) {
       html += `<div class="sub-h">🎯 今日必做（核心推进）</div>`;
       html += core.map(taskRow).join('');
     }
     html += `<div class="quick-add"><input id="qa-core" placeholder="今天最影响长期发展的一件事…">
       <button class="btn sm" data-act="add-task" data-type="core">添加</button></div>`;
-    html += `</div>`;
 
-    // ③ 今日待办
-    html += `<div class="card"><h3>📝 今日待办 <span class="tag">普通任务</span></h3>`;
+    // 📝 今日待办
+    html += `<div class="sub-h">📝 今日待办</div>`;
     html += todo.map(taskRow).join('') || `<div class="empty"><span class="em">🍃</span>暂无待办，轻松一点。</div>`;
     html += `<div class="quick-add"><input id="qa-todo" placeholder="添加一个普通任务…">
-      <button class="btn soft sm" data-act="add-task" data-type="todo">添加</button></div></div>`;
+      <button class="btn soft sm" data-act="add-task" data-type="todo">添加</button></div>`;
 
-    // ④ 需要继续推进（未完成旧事项；默认折叠，点标题展开）
+    // 🔄 需要继续推进（未完成旧事项；默认折叠，点标题展开）
     if (pending.length) {
       const open = App.folds['pending'];
-      html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="pending">
+      html += `<div class="sub-h fold-h" data-act="toggle-fold" data-id="pending">
         <span class="fold-ic">${open ? '▾' : '▸'}</span>🤝 需要继续推进
-        <span class="tag">${pending.length} 项来自之前的日子${open ? '' : ' · 点此展开'}</span></h3>`;
+        <span class="tag">${pending.length} 项来自之前的日子${open ? '' : ' · 点此展开'}</span></div>`;
       if (open) {
         html += pending.map((t) => {
           const acts = `<button class="mini green" data-act="cont-task" data-id="${t.id}">继续今天</button>
@@ -655,15 +655,16 @@
           return taskRow(t, acts);
         }).join('');
       } else {
-        html += `<div class="tiny muted" style="margin-top:-4px">这些是之前没做完的事，不急，有空再处理。展开后可「继续今天 / 延期 / 取消」。</div>`;
+        html += `<div class="tiny muted">这些是之前没做完的事，不急，有空再处理。展开后可「继续今天 / 延期 / 取消」。</div>`;
       }
-      html += `</div>`;
     }
 
-    // ⑤ 临时记录（最后，点击打开大编辑器）
-    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点击打开大编辑器</span></h3>`;
+    // ⚡ 临时记录（点击打开大编辑器）
+    html += `<div class="sub-h">⚡ 临时记录</div>`;
     html += temp.map(taskRow).join('') || `<div class="empty"><span class="em">💭</span>突然的想法、老板安排、客户回复，都能随手记这里。</div>`;
-    html += `<div style="margin-top:8px"><button class="btn soft sm" data-act="home-add-temp-modal">＋ 写一下临时记录</button></div></div>`;
+    html += `<div style="margin-top:8px"><button class="btn soft sm" data-act="home-add-temp-modal">＋ 写一下临时记录</button></div>`;
+
+    html += `</div>`;
 
     $('#view').innerHTML = html;
     bindQuickAdd();
@@ -911,6 +912,8 @@
         <span class="hmod-ic">📚</span><h3>最近成长痕迹</h3>
         <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span><span class="hbadge">${traceAll.length} 条</span>
       </div>`;
+    // 「看全部」常驻：折叠态也可点；点击进入成长地图（与成长地图同源 nav 逻辑）
+    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="nav" data-id="growth">看全部 →</button></div>`;
     if (traceOpen) {
       if (trace.length) {
         html += `<div class="home-list">` + trace.map((t) =>
@@ -919,7 +922,6 @@
       } else {
         html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
       }
-      html += `<button class="btn soft sm" data-act="nav" data-id="growth" style="margin-top:8px">看全部 →</button>`;
     } else if (trace.length) {
       html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(trace[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
     }
@@ -1283,6 +1285,8 @@
     html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="trace">
       <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span>📚 最近成长痕迹
       <span class="tag">${traceAll.length} 条</span></h3>`;
+    // 「看全部」常驻：折叠态也可点；点击进入成长地图（nav 逻辑与首页一致）
+    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="nav" data-id="growth">看全部 →</button></div>`;
     if (traceOpen) {
       if (trace.length) {
         html += `<div class="home-list">` + trace.map((t) =>
@@ -1291,7 +1295,6 @@
       } else {
         html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
       }
-      html += `<button class="btn soft sm" data-act="nav" data-id="growth" style="margin-top:8px">看全部 →</button>`;
     } else if (trace.length) {
       html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(trace[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
     }
@@ -2369,7 +2372,7 @@
       case 'cancel-task': { const t = find(s.tasks, id); if (t) { t.canceled = true; save(); renderToday(); toast('已归档，不给自己压力'); } break; }
       case 'defer-task': {
         const t = find(s.tasks, id); if (!t) break;
-        openForm('延期到哪天', [{ key: 'date', label: '新日期', value: addDays(1), type: 'text', hint: '格式 2026-08-09' }], null, (fd) => { t.date = fd.date; save(); renderToday(); toast('已顺延 🗓️'); });
+        openForm('延期到哪天', [{ key: 'date', label: '新日期', type: 'date', value: addDays(1) }], null, (fd) => { t.date = fd.date; save(); renderToday(); toast('已顺延 🗓️'); });
         break;
       }
 
@@ -2476,7 +2479,7 @@
       { key: 'type', label: '类型', type: 'select', options: TASK_TYPES, value: t.type },
       // 分类下拉：编辑历史旧分类任务时，自动补一条旧值选项并选中，保存后原 cat 不变（绝不静默改成新类）
       { key: 'cat', label: '分类', type: 'select', options: (id && t.cat && !TASK_CATS.find((o) => o.v === t.cat)) ? TASK_CATS.concat([{ v: t.cat, t: catName(t.cat) || t.cat }]) : TASK_CATS, value: t.cat },
-      { key: 'date', label: '日期', value: t.date || today() },
+      { key: 'date', label: '日期', type: 'date', value: t.date || today() },
     ], null, (fd) => {
       if (id) Object.assign(t, fd); else App.state.tasks.push(Object.assign({ id: uid(), done: false, canceled: false, order: Date.now() }, fd));
       save(); render();

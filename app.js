@@ -25,8 +25,19 @@
     if (s.aiProfile && typeof s.aiProfile === 'object') n += Object.keys(s.aiProfile).length;
     return n;
   }
-  const catClass = (c) => ({ edu: 'edu', content: 'content', ecom: 'ecom', biz: 'biz', grow: 'grow' }[c] || '');
-  const catName = (c) => ({ edu: '教育', content: '内容', ecom: '电商', biz: '商业', grow: '成长' }[c] || '');
+  // 任务 / 记录统一分类常量（单一来源：所有下拉框、标签、配色都从这里取）
+  const TASK_CATS = [
+    { v: '', t: '无' },
+    { v: 'edu', t: '教育' },
+    { v: 'content', t: '内容' },
+    { v: 'ecom', t: '电商' },
+    { v: 'biz', t: '商业' },
+    { v: 'grow', t: '成长' },
+    { v: 'company', t: '公司' },
+    { v: 'private', t: '私人' },
+  ];
+  const catName = (c) => { const x = TASK_CATS.find((o) => o.v === c); return x ? x.t : ''; };
+  const catClass = (c) => { const x = TASK_CATS.find((o) => o.v === c); return x && x.v ? x.v : ''; };
 
   let toastTimer = null;
   function toast(msg) {
@@ -173,7 +184,7 @@
   const MODULES = [
     { id: 'home', name: '首页', short: '首页', icon: '🏠' },
     { id: 'today', name: '每日进步', short: '进步', icon: '🌱', home: true },
-    { id: 'month', name: '成长月历', short: '月历', icon: '📅' },
+    { id: 'month', name: '月度成长', short: '月历', icon: '📅' },
     { id: 'growth', name: '成长地图', short: '成长', icon: '🗺️' },
     { id: 'inspiration', name: '灵感站', short: '灵感', icon: '💡' },
     { id: 'content', name: '婧婧内容宇宙', short: '内容', icon: '🎬' },
@@ -205,7 +216,7 @@
     // （不统计热点数量 / 灵感数量 / 链接数量 / 已发布数量 / 其他内容数量）
     const toShoot = s.content.filter((c) => c.status === '待制作').length;
     return {
-      today: s.tasks.filter((t) => !t.canceled && t.date <= td && !t.done).length,
+      today: s.tasks.filter((t) => !t.canceled && !t.done && t.date === td && (t.type === 'core' || t.type === 'todo')).length,
       month: 0,
       growth: 0,
       inspiration: 0,
@@ -584,13 +595,11 @@
       <div class="sub">${td} · 你正在一点点积累，努力正在留下痕迹</div>
     </div>`;
 
-    // ① 今天完成（置顶：第一眼看到「今天已经完成了什么」）
+    // ① 今天完成（置顶：第一眼看到「今天已经完成了什么」；点方框可取消完成 / 点编辑可修改）
     html += `<div class="card done-top">
-      <h3>✅ 今天完成 <span class="tag">${doneToday.length} 件事</span></h3>`;
+      <h3>✅ 今天完成 <span class="tag">${doneToday.length} 件事 · 点方框可取消</span></h3>`;
     if (doneToday.length) {
-      html += `<div class="home-list">` + doneToday.slice(0, 8).map((t) =>
-        `<div class="home-li"><span class="home-li-t">✓ ${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
-      ).join('') + `</div>`;
+      html += doneToday.slice(0, 8).map(taskRow).join('');
       html += `<div class="affirm">🌱 今天你又积累了一步。距离目标，又近了一点。</div>`;
     } else {
       html += `<div class="empty"><span class="em">🌿</span>今天还没完成任何事，从下面任一项开始吧。</div>`;
@@ -609,15 +618,23 @@
     html += `<div class="quick-add"><input id="qa-todo" placeholder="添加一个普通任务…">
       <button class="btn soft sm" data-act="add-task" data-type="todo">添加</button></div></div>`;
 
-    // ④ 需要继续推进（未完成旧事项）
+    // ④ 需要继续推进（未完成旧事项；默认折叠，点标题展开）
     if (pending.length) {
-      html += `<div class="card"><h3>🤝 需要继续推进 <span class="tag">${pending.length} 项来自之前的日子</span></h3>`;
-      html += pending.map((t) => {
-        const acts = `<button class="mini green" data-act="cont-task" data-id="${t.id}">继续今天</button>
-          <button class="mini" data-act="defer-task" data-id="${t.id}">延期</button>
-          <button class="mini ghost" data-act="cancel-task" data-id="${t.id}">取消</button>`;
-        return taskRow(t, acts);
-      }).join('') + `</div>`;
+      const open = App.folds['pending'];
+      html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="pending">
+        <span class="fold-ic">${open ? '▾' : '▸'}</span>🤝 需要继续推进
+        <span class="tag">${pending.length} 项来自之前的日子${open ? '' : ' · 点此展开'}</span></h3>`;
+      if (open) {
+        html += pending.map((t) => {
+          const acts = `<button class="mini green" data-act="cont-task" data-id="${t.id}">继续今天</button>
+            <button class="mini" data-act="defer-task" data-id="${t.id}">延期</button>
+            <button class="mini ghost" data-act="cancel-task" data-id="${t.id}">取消</button>`;
+          return taskRow(t, acts);
+        }).join('');
+      } else {
+        html += `<div class="tiny muted" style="margin-top:-4px">这些是之前没做完的事，不急，有空再处理。展开后可「继续今天 / 延期 / 取消」。</div>`;
+      }
+      html += `</div>`;
     }
 
     // ⑤ 临时记录（最后，点击打开大编辑器）
@@ -780,11 +797,20 @@
       </div>
       <div class="hh-stats">
         <div class="hh-pill"><span class="n">${todayTodo}</span><span class="l">待办</span></div>
-        <div class="hh-pill"><span class="n">${todayDone}</span><span class="l">已完成</span></div>
+        <div class="hh-pill ${todayDone ? 'clickable' : ''}" ${todayDone ? 'data-act="home-expand-done"' : ''}><span class="n">${todayDone}</span><span class="l">已完成 · 点开</span></div>
         <div class="hh-pill"><span class="n">${doneHabits}/${habits.length || 0}</span><span class="l">打卡</span></div>
       </div>
       <button class="mini ghost hh-qbtn" data-act="home-quote">换一句 ✦</button>
     </div>`;
+
+    // —— 首页「今日完成」展开（合并进 hero 已完成数字；点击展开，不另立模块）——
+    if (todayDone && App.folds['homeDone']) {
+      const doneList = todayTasks.filter((t) => t.done);
+      html += `<div class="card hmod hmod-done">
+        <div class="hmod-head"><span class="hmod-ic">✅</span><h3>今日完成</h3><span class="hbadge">${doneList.length} 件</span><button class="hbtn" data-act="home-expand-done">收起</button></div>
+        <div class="home-list">${doneList.slice(0, 12).map(taskRow).join('')}</div>
+      </div>`;
+    }
 
     // —— 设计参考图位（用户预留，之后手动替换为图片）——
     html += `<!-- 设计参考图位：这里插入我的界面参考图片 -->
@@ -801,11 +827,7 @@
         <input id="home-task-title" placeholder="今天要做的任务…">
         <div class="home-add-acts">
           <select id="home-task-cat" aria-label="区域">
-            <option value="edu">教育</option>
-            <option value="content">内容</option>
-            <option value="ecom">电商</option>
-            <option value="biz">商业</option>
-            <option value="grow">成长</option>
+            ${TASK_CATS.map((o) => `<option value="${o.v}">${o.t}</option>`).join('')}
           </select>
           <button class="btn sm" data-act="home-add-task">＋ 添加</button>
           <button class="btn ghost sm" data-act="home-clear-task">清空</button>
@@ -1116,23 +1138,54 @@
       (taskByDate[key] = taskByDate[key] || []).push(t);
     });
 
+    // 月度概览（实时从同一 tasks 计算，无第二套数据）
+    const ym = calYear + '-' + String(calMonth + 1).padStart(2, '0');
+    const inMonth = (t) => { const k = t.done ? (t.doneAt || t.date) : t.date; return k && k.slice(0, 7) === ym; };
+    const monthTasks = s.tasks.filter((t) => !t.canceled && inMonth(t));
+    const mDone = monthTasks.filter((t) => t.done).length;
+    const mTodo = monthTasks.length - mDone;
+    const mRate = monthTasks.length ? Math.round((mDone / monthTasks.length) * 100) : 0;
+
+    // 节假日 / 纪念日（仅作轻量角标，不堆内容，避免拥挤）
+    const holSet = {};
+    CN_HOLIDAYS.forEach((h) => { if (h.date.slice(0, 7) === ym) holSet[h.date] = { t: h.title, k: h.kind }; });
+    (s.dates || []).forEach((d) => { if (d.date && d.date.slice(0, 7) === ym) holSet[d.date] = { t: d.title, k: 'user' }; });
+
     const dow = ['日', '一', '二', '三', '四', '五', '六'];
-    let html = `<div class="card"><div class="cal-head">
-      <button class="btn ghost sm" data-act="cal-prev">‹</button>
-      <div class="mon">${calYear} 年 ${calMonth + 1} 月</div>
-      <button class="btn ghost sm" data-act="cal-next">›</button></div>
-      <div class="cal-grid">${dow.map((x) => `<div class="cal-dow">${x}</div>`).join('')}`;
+    let html = `<div class="card month-ov">
+      <div class="mon-ov-head"><span class="mon-ov-title">📅 ${calYear} 年 ${calMonth + 1} 月 · 月度成长</span></div>
+      <div class="mon-ov-grid">
+        <div class="mov"><span class="mn">${monthTasks.length}</span><span class="ml">总任务</span></div>
+        <div class="mov done"><span class="mn">${mDone}</span><span class="ml">已完成</span></div>
+        <div class="mov todo"><span class="mn">${mTodo}</span><span class="ml">待完成</span></div>
+        <div class="mov rate"><span class="mn">${mRate}%</span><span class="ml">完成率</span></div>
+      </div>
+      <div class="cal-head" style="margin-top:12px">
+        <button class="btn ghost sm" data-act="cal-prev">‹</button>
+        <div class="mon">${calYear} 年 ${calMonth + 1} 月</div>
+        <button class="btn ghost sm" data-act="cal-next">›</button>
+      </div>
+    </div>`;
+
+    html += `<div class="card"><div class="cal-grid">${dow.map((x) => `<div class="cal-dow">${x}</div>`).join('')}`;
     cells.forEach((c) => {
       if (!c) { html += `<div></div>`; return; }
       const list = taskByDate[c] || [];
       const done = list.filter((t) => t.done).length;
       const todo = list.length - done;
       const isTd = c === today();
+      const hol = holSet[c];
+      const extra = hol ? `<span class="cal-hol ${hol.k === 'user' ? 'user' : ''}" title="${esc(hol.t)}">${hol.k === 'user' ? '★' : '休'}</span>` : '';
       const pills = list.slice(0, 3).map((t) => `<span class="pill ${t.done ? 'ok' : ''}">${esc(t.title.slice(0, 6))}</span>`).join('');
+      const more = list.length > 3 ? `<span class="cal-more">+${list.length - 3}项</span>` : '';
       html += `<div class="cal-cell ${isTd ? 'today' : ''}" data-act="cal-day" data-id="${c}">
-        <div class="d">${+c.slice(8)}</div>
-        <div class="dots">${done ? `<span class="pill ok">✓${done}</span>` : ''}${todo ? `<span class="pill">○${todo}</span>` : ''}</div>
-        ${pills}
+        <div class="d">${+c.slice(8)}${extra}</div>
+        <div class="cal-counts">
+          ${done ? `<span class="dot green" title="已完成 ${done}">🟢${done}</span>` : ''}
+          ${todo ? `<span class="dot red" title="待完成 ${todo}">🔴${todo}</span>` : ''}
+          ${more}
+        </div>
+        <div class="cal-pills">${pills}</div>
       </div>`;
     });
     html += `</div></div>`;
@@ -1147,7 +1200,7 @@
       html += `</div>`;
     }
     $('#view').innerHTML = html;
-    setPage('成长月历');
+    setPage('月度成长');
   }
 
   /* ============================================================
@@ -2252,6 +2305,8 @@
       case 'home-add-temp-modal': homeAddTempModal(); break;
       case 'toggle-task': { const t = find(s.tasks, id); if (t) { t.done = !t.done; if (t.done) t.doneAt = today(); save(); render(); } break; }
       case 'edit-task': editTask(id); break;
+      case 'toggle-fold': { App.folds[id] = !App.folds[id]; render(); break; }
+      case 'home-expand-done': { App.folds['homeDone'] = !App.folds['homeDone']; render(); break; }
       case 'del-task': if (trashItem('tasks', id, 'task')) { save(); render(); toast('已移入回收站，可以随时恢复 🌿'); } break;
       case 'cont-task': { const t = find(s.tasks, id); if (t) { t.date = today(); save(); render(); toast('已移到今天 🌱'); } break; }
       case 'cancel-task': { const t = find(s.tasks, id); if (t) { t.canceled = true; save(); renderToday(); toast('已归档，不给自己压力'); } break; }
@@ -2359,7 +2414,7 @@
     openForm(id ? '编辑任务' : '新建任务', [
       { key: 'title', label: '内容', value: t.title, type: 'textarea' },
       { key: 'type', label: '类型', type: 'select', options: [{ v: 'core', t: '核心推进' }, { v: 'todo', t: '普通待办' }, { v: 'temp', t: '临时记录' }], value: t.type },
-      { key: 'cat', label: '分类', type: 'select', options: [{ v: '', t: '无' }, { v: 'edu', t: '教育' }, { v: 'content', t: '内容' }, { v: 'ecom', t: '电商' }, { v: 'biz', t: '商业' }, { v: 'grow', t: '成长' }], value: t.cat },
+      { key: 'cat', label: '分类', type: 'select', options: TASK_CATS, value: t.cat },
       { key: 'date', label: '日期', value: t.date || today() },
     ], null, (fd) => {
       if (id) Object.assign(t, fd); else App.state.tasks.push(Object.assign({ id: uid(), done: false, canceled: false, order: Date.now() }, fd));

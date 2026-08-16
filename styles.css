@@ -146,6 +146,8 @@ header.topbar {
 .chip.ecom { background: #E8EFF3; color: #4F7C92; }
 .chip.biz { background: #F3ECF7; color: #7A5C92; }
 .chip.grow { background: #FCF3DA; color: #A9832F; }
+.chip.company { background: #E7E2F2; color: #6B5B95; }
+.chip.private { background: #ECECEC; color: #7A7A7A; }
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .mini {
   font-size: 12px; padding: 5px 10px; border-radius: 9px; background: var(--bg-soft);
@@ -186,10 +188,37 @@ header.topbar {
 }
 .cal-cell:hover { border-color: var(--terra); }
 .cal-cell.today { border-color: var(--terra); box-shadow: 0 0 0 2px rgba(232,168,124,.25); }
-.cal-cell .d { font-size: 13px; font-weight: 700; }
+.cal-cell .d { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 3px; }
 .cal-cell .dots { display: flex; gap: 3px; flex-wrap: wrap; }
 .cal-cell .pill { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-soft); color: var(--ink-soft); }
 .cal-cell .pill.ok { background: #E4F0DE; color: #5C8A57; }
+/* 月度成长：实心 🟢🔴 状态点 + 折叠（移动端只显示计数，桌面展开标题） */
+.cal-counts { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.cal-counts .dot { font-size: 10px; line-height: 1; letter-spacing: -1px; }
+.cal-more { font-size: 10px; color: var(--ink-soft); background: var(--bg-soft); border-radius: 8px; padding: 1px 6px; }
+.cal-pills { display: none; }   /* 移动端默认折叠，不撑爆 */
+.cal-hol { font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 6px; background: #FBE3E3; color: #C0504D; }
+.cal-hol.user { background: #EDE4F7; color: #6B5B95; }
+
+/* 月度概览卡片 */
+.month-ov { background: linear-gradient(135deg, #FFF6E9, #EFF4E6); border: 1px solid #F1E6CF; }
+.mon-ov-head { margin-bottom: 10px; }
+.mon-ov-title { font-size: 16px; font-weight: 800; color: var(--terra-d); }
+.mon-ov-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.mov { background: #fff; border-radius: 14px; padding: 12px 8px; text-align: center; box-shadow: 0 3px 10px rgba(180,150,120,.08); }
+.mov .mn { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.mov .ml { font-size: 11.5px; color: var(--ink-soft); }
+.mov.done .mn { color: #5C8A57; }
+.mov.todo .mn { color: var(--terra-d); }
+.mov.rate .mn { color: var(--gold); }
+
+/* 折叠标题（需要继续推进 / 灵感等） */
+.fold-h { cursor: pointer; user-select: none; }
+.fold-ic { display: inline-block; width: 14px; color: var(--ink-soft); }
+/* 首页已完成数字可点击展开 */
+.hh-pill.clickable { cursor: pointer; transition: transform .15s, box-shadow .15s; }
+.hh-pill.clickable:hover { box-shadow: 0 4px 12px rgba(232,168,124,.35); transform: translateY(-1px); }
+.hmod-done { border-color: #E4F0DE; }
 
 /* ---------- 通用列表/按钮 ---------- */
 .btn {
@@ -313,6 +342,11 @@ header.topbar {
   .task-row { flex-wrap: wrap; }
   .row-actions { flex-basis: 100%; margin-top: 6px; flex-wrap: wrap; }
   .row-actions .mini { padding: 4px 8px; font-size: 11.5px; }
+}
+/* 桌面端：月历格子展开标题药丸（移动端保持折叠，只显示 🟢🔴 计数） */
+@media (min-width: 721px) {
+  .cal-pills { display: flex; flex-wrap: wrap; gap: 3px; }
+  .cal-cell { min-height: 62px; }
 }
 
 /* ---------- 回收站 ---------- */

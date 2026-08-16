@@ -485,6 +485,28 @@ header.topbar {
 .home-dm-row .hm-t { flex: 1; font-size: 13.5px; }
 .home-dm-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .home-dm-add input { flex: 1; min-width: 110px; }
+/* 轮次 O：去除 hero 废话 / 紧凑重要日子 / 习惯管理 */
+.home-topbar { display: flex; gap: 8px; align-items: center; padding: 14px 4px 6px; font-size: 13px; color: var(--ink-soft); }
+.home-topbar .dot { opacity: .5; }
+.home-next2 { display: flex; align-items: center; gap: 8px; background: var(--bg-soft); border-radius: 12px; padding: 9px 12px; font-size: 14px; flex-wrap: wrap; }
+.home-next2 .hn-tag { font-size: 12px; color: var(--ink-soft); background: #fff; border: 1px solid var(--line); padding: 1px 8px; border-radius: 8px; }
+.home-next2 .hn-plus { width: 30px; height: 30px; border-radius: 9px; border: none; background: var(--gold); color: #4a3a10; font-size: 18px; font-weight: 800; cursor: pointer; margin-left: auto; flex: 0 0 auto; }
+.home-check { flex-wrap: wrap; }
+.home-check .ic { font-size: 18px; }
+.home-check .md { font-size: 11.5px; color: var(--ink-soft); background: #fff; padding: 1px 7px; border-radius: 7px; border: 1px solid var(--line); }
+.home-check .lab { flex: 1; min-width: 60px; }
+.hbtn { background: transparent; border: 1px solid var(--line); color: var(--ink-soft); border-radius: 8px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; }
+.hbtn:hover { background: var(--bg-soft); }
+/* 习惯管理弹窗 */
+.hm-tip { font-size: 12.5px; color: var(--ink-soft); background: var(--bg-soft); border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+.hm-list { max-height: 320px; overflow: auto; }
+.hm-row { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.hm-row .hm-ic { font-size: 18px; }
+.hm-row .hm-n { flex: 1; font-size: 14px; font-weight: 600; min-width: 80px; }
+.hm-row .hm-k { font-size: 11.5px; color: var(--ink-soft); background: var(--bg-soft); padding: 1px 7px; border-radius: 7px; }
+/* 每日进步：今天完成置顶 */
+.done-top .home-li-t { color: var(--ink); }
+.done-top .affirm { margin-top: 8px; font-size: 13px; color: var(--ink-soft); background: var(--bg-soft); border-radius: 10px; padding: 7px 10px; }
 @media (max-width: 540px) {
   .home-stats { gap: 7px; }
   .home-stat { padding: 10px 6px; border-radius: 12px; }

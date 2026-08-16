@@ -48,6 +48,14 @@
     if (!Array.isArray(s.trash)) s.trash = [];
     if (!Array.isArray(s.purged)) s.purged = [];
     if (!Array.isArray(s.dates)) s.dates = [];   // 首页「重要日期」：仅补空数组，零迁移
+    // 习惯配置（仅补空数组 + 首次种子，零迁移）：内置「英语」「健康」通过 kind 关联到原有 english/health 数组，历史打卡完全保留
+    if (!Array.isArray(s.habitLogs)) s.habitLogs = [];   // 自定义习惯的打卡记录
+    if (!Array.isArray(s.habits)) {
+      s.habits = [
+        { id: 'sys-english', name: '英语', icon: '📚', kind: 'english', active: true, order: 1, createdAt: today() },
+        { id: 'sys-health', name: '健康', icon: '💪', kind: 'health', active: true, order: 2, createdAt: today() },
+      ];
+    }
   }
 
   let saveTimer = null;
@@ -465,14 +473,8 @@
     const core = tasks.filter((t) => t.type === 'core' && t.date === td && !t.done);
     const todo = tasks.filter((t) => t.type === 'todo' && t.date === td && !t.done);
     const temp = tasks.filter((t) => t.type === 'temp' && t.date === td && !t.done);
-    const pending = tasks.filter((t) => t.date < td && !t.done); // 待处理
+    const pending = tasks.filter((t) => t.date < td && !t.done);
     const doneToday = tasks.filter((t) => t.done && (t.doneAt || t.date) === td);
-
-    // 完成反馈
-    const byCat = { edu: 0, content: 0, ecom: 0, biz: 0, grow: 0 };
-    doneToday.forEach((t) => { if (t.cat && byCat[t.cat] != null) byCat[t.cat]++; });
-    const fbCats = ['edu', 'content', 'ecom'].filter((c) => byCat[c] > 0)
-      .map((c) => `<div class="fb-cat">${catName(c)}<b>${byCat[c]}</b></div>`).join('') || '<div class="muted tiny">今天还没完成事项，慢慢来 🌿</div>';
 
     let html = `
     <div class="hero">
@@ -481,27 +483,34 @@
       <div class="sub">${td} · 你正在一点点积累，努力正在留下痕迹</div>
     </div>`;
 
-    // 核心推进
-    html += `<div class="card"><h3>🌟 今日核心推进 <span class="tag">最多 3 项 · 最影响长期</span></h3>`;
-    html += core.map(taskRow).join('') || `<div class="empty"><span class="em">🎯</span>还没有设定核心推进。写下今天最关键的 1 件事。</div>`;
+    // ① 今天完成（置顶：第一眼看到「今天已经完成了什么」）
+    html += `<div class="card done-top">
+      <h3>✅ 今天完成 <span class="tag">${doneToday.length} 件事</span></h3>`;
+    if (doneToday.length) {
+      html += `<div class="home-list">` + doneToday.slice(0, 8).map((t) =>
+        `<div class="home-li"><span class="home-li-t">✓ ${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+      ).join('') + `</div>`;
+      html += `<div class="affirm">🌱 今天你又积累了一步。距离目标，又近了一点。</div>`;
+    } else {
+      html += `<div class="empty"><span class="em">🌿</span>今天还没完成任何事，从下面任一项开始吧。</div>`;
+    }
+    html += `</div>`;
+
+    // ② 今日必做（核心）
+    html += `<div class="card"><h3>🌟 今日必做 <span class="tag">最多 3 项 · 最影响长期</span></h3>`;
+    html += core.map(taskRow).join('') || `<div class="empty"><span class="em">🎯</span>还没有设定必做事项。写下今天最关键的 1 件事。</div>`;
     html += `<div class="quick-add"><input id="qa-core" placeholder="今天最影响长期发展的一件事…">
       <button class="btn sm" data-act="add-task" data-type="core">添加</button></div></div>`;
 
-    // 待办
+    // ③ 今日待办
     html += `<div class="card"><h3>📝 今日待办 <span class="tag">普通任务</span></h3>`;
     html += todo.map(taskRow).join('') || `<div class="empty"><span class="em">🍃</span>暂无待办，轻松一点。</div>`;
     html += `<div class="quick-add"><input id="qa-todo" placeholder="添加一个普通任务…">
       <button class="btn soft sm" data-act="add-task" data-type="todo">添加</button></div></div>`;
 
-    // 临时记录
-    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">随时记下冒出来的事</span></h3>`;
-    html += temp.map(taskRow).join('') || `<div class="empty"><span class="em">💭</span>突然的想法、老板安排、客户回复，都能随手记这里。</div>`;
-    html += `<div class="quick-add"><input id="qa-temp" placeholder="临时事项 / 灵感 / 想法…">
-      <button class="btn ghost sm" data-act="add-task" data-type="temp">记一下</button></div></div>`;
-
-    // 待处理（未完成）
+    // ④ 需要继续推进（未完成旧事项）
     if (pending.length) {
-      html += `<div class="card"><h3>🤝 待继续推进 <span class="tag">${pending.length} 项来自之前的日子</span></h3>`;
+      html += `<div class="card"><h3>🤝 需要继续推进 <span class="tag">${pending.length} 项来自之前的日子</span></h3>`;
       html += pending.map((t) => {
         const acts = `<button class="mini green" data-act="cont-task" data-id="${t.id}">继续今天</button>
           <button class="mini" data-act="defer-task" data-id="${t.id}">延期</button>
@@ -510,16 +519,10 @@
       }).join('') + `</div>`;
     }
 
-    // 完成反馈
-    html += `<div class="feedback">
-      <div class="tiny muted">今天完成</div>
-      <div class="big-num">${doneToday.length} <span style="font-size:14px;color:var(--ink-soft)">件事</span></div>
-      <div class="fb-cats">${fbCats}</div>
-      <div class="affirm">🌱 今天你又积累了一步。距离目标，又近了一点。</div>
-    </div>`;
-
-    // 历史归档
-    html += historyBlock();
+    // ⑤ 临时记录（最后，点击打开大编辑器）
+    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点击打开大编辑器</span></h3>`;
+    html += temp.map(taskRow).join('') || `<div class="empty"><span class="em">💭</span>突然的想法、老板安排、客户回复，都能随手记这里。</div>`;
+    html += `<div style="margin-top:8px"><button class="btn soft sm" data-act="home-add-temp-modal">＋ 写一下临时记录</button></div></div>`;
 
     $('#view').innerHTML = html;
     bindQuickAdd();
@@ -551,34 +554,9 @@
     </div>`;
   }
 
-  function historyBlock() {
-    const s = App.state;
-    const done = s.tasks.filter((t) => t.done && !t.canceled);
-    const groups = {};
-    done.forEach((t) => { const d = t.doneAt || t.date; (groups[d] = groups[d] || []).push(t); });
-    const dates = Object.keys(groups).sort().reverse();
-    if (!dates.length) return '';
-    let html = `<div class="card"><h3>📚 成长痕迹 <span class="tag">已完成事项按日期归档</span></h3>`;
-    dates.slice(0, 30).forEach((d) => {
-      const open = App.folds['hist-' + d] ? 'open' : '';
-      const items = groups[d].map((t) =>
-        `<div class="task-row" style="opacity:.85">
-          <div class="check ${t.cat === 'grow' || t.cat === 'content' ? 'green' : ''} done">✓</div>
-          <div class="task-main"><div class="task-title done">${esc(t.title)}</div>
-          <div class="task-meta">${t.cat ? '<span class="chip ' + catClass(t.cat) + '">' + catName(t.cat) + '</span>' : ''}</div></div>
-        </div>`).join('');
-      html += `<div class="fold ${open}">
-        <div class="fold-head" data-act="fold" data-target="hist-${d}">
-          <span class="arrow">▶</span>
-          <b>${d}</b><span class="muted tiny">完成 ${groups[d].length} 项</span>
-        </div><div class="fold-body">${items}</div></div>`;
-    });
-    html += `</div>`;
-    return html;
-  }
 
   function bindQuickAdd() {
-    [['qa-core', 'core'], ['qa-todo', 'todo'], ['qa-temp', 'temp']].forEach(([id, type]) => {
+    [['qa-core', 'core'], ['qa-todo', 'todo']].forEach(([id, type]) => {
       const el = $('#' + id); if (!el) return;
       const add = () => { const v = el.value.trim(); if (!v) return; addTask(type, v); el.value = ''; };
       el.onkeydown = (e) => { if (e.key === 'Enter') add(); };
@@ -664,9 +642,7 @@
     const s = App.state;
     const td = today();
 
-    // —— 今日份进步：英语/健康 今日是否已打卡（存在 date===今天 的记录即完成）——
-    const enDone = s.english.some((e) => (e.date || '') === td);
-    const heDone = s.health.some((h) => (h.date || '') === td);
+    // —— 本月财富打卡天数（真实收入记录，不参与习惯打卡）——
     const incDays = new Set(s.income.filter((i) => (i.date || '').slice(0, 7) === td.slice(0, 7)).map((i) => i.date));
 
     // —— 拍摄计划：内容宇宙 status=待制作 ——
@@ -683,40 +659,47 @@
     const q = homeQuote();
 
     let html = `
-    <div class="hero home-hero">
-      <div class="hi">${greet()} · ${td}</div>
-      <div class="big">jinn，今天也慢慢来 🌿</div>
+    <div class="home-topbar">
+      <span>${greet()}</span><span class="dot">·</span><span>${td}</span>
     </div>`;
 
-    // —— 顶部「今日状态区」：今日份进步 + 金句 + 下一个重要日子 ——
+    // —— 顶部：今日金句（中文 + 英文），占据原 hero 位置，去掉「慢慢来」废话 ——
+    html += `<div class="card home-quote2">
+      <h3>今日金句</h3>
+      <div class="hq-t">${esc(q.zh)}</div>
+      <div class="hq-en">${esc(q.en)}</div>
+      <button class="mini ghost" data-act="home-quote" style="margin-top:6px">换一句</button>
+    </div>`;
+
+    // —— 今日份进步：配置驱动的习惯打卡（兼容层：通过 kind 复用 english/health；自定义用 habitLogs）——
+    const habits = (s.habits || []).filter((h) => h.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const habitBoxes = habits.map((h) => {
+      const done = isHabitDoneToday(h);
+      const md = habitMonthDays(h);
+      return `<div class="home-check ${done ? 'on' : ''}" data-act="home-toggle-checkin" data-id="${h.id}">
+        <span class="box">${done ? '✓' : ''}</span>
+        <span class="ic">${esc(h.icon || '🌱')}</span>
+        <span class="lab">${esc(h.name)}</span>
+        <span class="md">本月 ${md} 天</span>
+        ${done ? '<button class="mini ghost" data-act="home-edit-note" data-id="' + h.id + '" style="margin-left:auto">＋ 备注</button>' : ''}
+      </div>`;
+    }).join('') || '<div class="muted tiny">还没有习惯，点右上角「管理」添加。</div>';
     html += `<div class="card home-top">
-      <h3>🌟 今日份进步 <span class="tag">点击方框 = 今天完成</span></h3>
-      <div class="home-checks">
-        <div class="home-check ${enDone ? 'on' : ''}" data-act="home-toggle-checkin" data-kind="english">
-          <span class="box">${enDone ? '✓' : ''}</span><span class="lab">英语</span>
-          ${enDone ? '<button class="mini ghost" data-act="home-edit-note" data-kind="english">添加备注</button>' : ''}
-        </div>
-        <div class="home-check ${heDone ? 'on' : ''}" data-act="home-toggle-checkin" data-kind="health">
-          <span class="box">${heDone ? '✓' : ''}</span><span class="lab">健康</span>
-          ${heDone ? '<button class="mini ghost" data-act="home-edit-note" data-kind="health">添加备注</button>' : ''}
-        </div>
-        <div class="home-income">💰 财富 · 本月 ${incDays.size} 天（真实收入记录）</div>
-      </div>
-      <div class="home-quote2">
-        <div class="hq-t">${esc(q.zh)}</div>
-        <div class="hq-en">${esc(q.en)}</div>
-        <button class="mini ghost" data-act="home-quote" style="margin-top:4px">换一句</button>
-      </div>
-      <div class="home-next">
-        <span class="hn-ic">📅</span>
-        <span class="hn-t">距离下一个重要日子</span>
-        <span class="hn-v">${esc(nextLabel)}</span>
-        <button class="hn-plus" data-act="home-date-manage" aria-label="管理重要日期">＋</button>
-      </div>
+      <h3>🌟 今日份进步 <span class="tag">点击方框 = 打卡 / 取消</span><button class="hbtn" data-act="home-habit-manage" style="margin-left:auto">⚙️ 管理</button></h3>
+      <div class="home-checks">${habitBoxes}</div>
+      <div class="home-income">💰 财富 · 本月 ${incDays.size} 天（真实收入记录，不参与打卡）</div>
     </div>`;
 
-    // —— 第二层：快速操作 ——
-    html += `<div class="card"><h3>➕ 快速添加任务 <span class="tag">写任务名 + 选区域，直接记到今日</span></h3>
+    // —— 下一个重要日子：紧凑一行（去掉「距离…还有」长标签）——
+    const days = nx ? Math.round((new Date(nx.date).getTime() - new Date(td).getTime()) / 86400000) : 0;
+    const nextCompact = nx ? (nx.date === td ? `<b>${esc(nx.title)}</b> · 今天` : `<b>${esc(nx.title)}</b> · ${days} 天后`) : '暂无重要日子';
+    html += `<div class="card home-next2">
+      <span class="hn-tag">下一个</span> ${nextCompact}
+      <button class="hn-plus" data-act="home-date-manage" aria-label="管理重要日期">＋</button>
+    </div>`;
+
+    // —— 快速添加任务 ——
+    html += `<div class="card"><h3>➕ 快速添加任务 <span class="tag">写任务名 + 选区域</span></h3>
       <div class="home-add">
         <input id="home-task-title" placeholder="今天要做的任务…">
         <select id="home-task-cat" aria-label="区域">
@@ -732,12 +715,13 @@
         </div>
       </div></div>`;
 
-    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">冒出来的想法随手记</span></h3>
+    // —— 临时记录：点击进入大面积备忘录编辑 ——
+    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点击打开大编辑器</span></h3>
       <div class="quick-add"><input id="home-temp" placeholder="临时事项 / 灵感 / 一句话…" readonly>
         <button class="btn ghost sm" data-act="home-add-temp-modal">写一下</button></div>
-      <div class="tiny muted">点击输入框进入大面积备忘录编辑，取消不会保存</div></div>`;
+      <div class="tiny muted">点「写一下」打开大面积编辑器，取消不会保存</div></div>`;
 
-    // —— 第三层：今天要推进 ——
+    // —— 拍摄计划 ——
     html += `<div class="card"><h3>🎬 拍摄计划 <span class="tag">内容宇宙 · 待制作 ${shoot.length} 条</span></h3>`;
     if (shoot.length) {
       html += `<div class="home-list">` + shoot.slice(0, 6).map((c) => {
@@ -745,11 +729,11 @@
         return `<div class="home-li" data-act="nav" data-id="content"><span class="home-li-t">${esc(c.title || '(未命名选题)')}</span>${renderSeriesTag(se)}</div>`;
       }).join('') + `</div>`;
     } else {
-      html += `<div class="empty"><span class="em">🎬</span>内容宇宙还没有「待制作」选题，去内容宇宙加一个吧。</div>`;
+      html += `<div class="empty"><span class="em">🎬</span>内容宇宙还没有「待制作」选题。</div>`;
     }
     html += `</div>`;
 
-    // —— 第四层：我最近做成了什么（跳转成长地图，同源数据）——
+    // —— 最近成长痕迹（跳转成长地图）——
     const trace = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
       .slice(0, 6);
@@ -759,7 +743,7 @@
         `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
       ).join('') + `</div>`;
     } else {
-      html += `<div class="empty"><span class="em">📚</span>还没有完成的记录，完成一件事就会留在这里。</div>`;
+      html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
     }
     html += `<button class="btn soft sm" data-act="nav" data-id="growth" style="margin-top:8px">看全部 →</button></div>`;
 
@@ -789,30 +773,146 @@
       addTask('temp', v); toast('已记到临时记录 💭');
     });
   }
-  // 今日份进步：点击即打卡（只新增当日记录，绝不删历史；已打卡不再重复新增）
-  function homeToggleCheckin(kind) {
-    if (kind !== 'english' && kind !== 'health') return;
-    const s = App.state; const td = today();
-    const arr = kind === 'english' ? s.english : s.health;
-    if (arr.some((x) => (x.date || '') === td)) { toast('今天已经打卡啦 ✓'); return; }
-    if (kind === 'english') arr.push({ id: uid(), type: '打卡', minutes: 0, date: td, note: '', checkin: true });
-    else arr.push({ id: uid(), sleep: '', exercise: '', state: '好', date: td, note: '', checkin: true });
-    save(); render(); toast('今日' + (kind === 'english' ? '英语' : '健康') + '已打卡 ✓');
+  // 今日份进步：配置驱动的习惯打卡（兼容层）。
+  // 不写死英语/健康：通过 s.habits 配置驱动；kind=english/health 复用原 english/health 数组（仅新增 checkin 标记，旧记录零迁移）；
+  // kind=custom 用新数组 s.habitLogs。删除习惯只删配置，历史数据完全保留。
+  function habitSource(habit) {
+    if (!habit) return null;
+    if (habit.kind === 'english') return App.state.english;
+    if (habit.kind === 'health') return App.state.health;
+    if (habit.kind === 'custom') return App.state.habitLogs;
+    return null;
   }
-  // 添加备注（可选）：只更新当天记录，不删不改其他历史
-  function homeEditNote(kind) {
-    const s = App.state; const td = today();
-    const arr = kind === 'english' ? s.english : s.health;
-    const ent = arr.find((x) => (x.date || '') === td && x.checkin) || arr.find((x) => (x.date || '') === td);
-    if (!ent) { toast('今天还没打卡，先点方框 ✓'); return; }
-    const fields = kind === 'english'
-      ? [{ key: 'minutes', label: '学习时长（分钟，可选）', value: ent.minutes || '' }, { key: 'note', label: '备注（可选）', type: 'textarea', value: ent.note || '' }]
-      : [{ key: 'note', label: '备注（可选）', type: 'textarea', value: ent.note || '' }];
-    openForm('添加备注', fields, null, (fd) => {
-      if (kind === 'english') ent.minutes = Number(fd.minutes) || 0;
-      ent.note = fd.note || '';
+  function isHabitDoneToday(habit) {
+    if (!habit) return false;
+    const td = today();
+    if (habit.kind === 'english' || habit.kind === 'health') {
+      const arr = habitSource(habit);
+      return Array.isArray(arr) && arr.some((r) => r.date === td && r.checkin === true);
+    }
+    if (habit.kind === 'custom') {
+      return App.state.habitLogs.some((r) => r.habitId === habit.id && r.date === td);
+    }
+    return false;
+  }
+  function habitMonthDays(habit) {
+    if (!habit) return 0;
+    const month = today().slice(0, 7);
+    if (habit.kind === 'english' || habit.kind === 'health') {
+      const arr = habitSource(habit) || [];
+      return new Set(arr.filter((r) => r.date && r.date.slice(0, 7) === month && r.checkin === true).map((r) => r.date)).size;
+    }
+    if (habit.kind === 'custom') {
+      return new Set(App.state.habitLogs.filter((r) => r.habitId === habit.id && r.date && r.date.slice(0, 7) === month).map((r) => r.date)).size;
+    }
+    return 0;
+  }
+  // 切换打卡：已完成→轻量确认后取消（仅删今日 checkin 标记）；未完成→新增今日标记。历史数据零影响。
+  function toggleHabit(habitId) {
+    const s = App.state;
+    const habit = s.habits.find((h) => h.id === habitId);
+    if (!habit) return;
+    const td = today();
+    if (isHabitDoneToday(habit)) {
+      if (!window.confirm('取消今日「' + habit.name + '」打卡？')) return;
+      if (habit.kind === 'english' || habit.kind === 'health') {
+        const arr = habitSource(habit);
+        for (let i = arr.length - 1; i >= 0; i--) {
+          if (arr[i].date === td && arr[i].checkin === true) arr.splice(i, 1);
+        }
+      } else if (habit.kind === 'custom') {
+        s.habitLogs = s.habitLogs.filter((r) => !(r.habitId === habit.id && r.date === td));
+      }
+      save(); render(); toast('已取消今日打卡');
+    } else {
+      if (habit.kind === 'english') {
+        s.english.push({ id: uid(), type: '今日打卡', minutes: 0, date: td, note: '', checkin: true });
+      } else if (habit.kind === 'health') {
+        s.health.push({ id: uid(), sleep: '', exercise: '', state: '好', date: td, note: '', checkin: true });
+      } else if (habit.kind === 'custom') {
+        s.habitLogs.push({ id: uid(), habitId: habit.id, date: td, note: '', createdAt: td });
+      }
+      save(); render(); toast('今日「' + habit.name + '」已打卡 ✓');
+    }
+  }
+  // 添加备注（可选）：只更新今天的打卡记录
+  function editHabitNote(habitId) {
+    const s = App.state;
+    const habit = s.habits.find((h) => h.id === habitId);
+    if (!habit) return;
+    const td = today();
+    let rec = null;
+    if (habit.kind === 'english') rec = s.english.find((r) => r.date === td && r.checkin === true);
+    else if (habit.kind === 'health') rec = s.health.find((r) => r.date === td && r.checkin === true);
+    else if (habit.kind === 'custom') rec = s.habitLogs.find((r) => r.habitId === habit.id && r.date === td);
+    if (!rec) { toast('今天还没打卡，先点方框 ✓'); return; }
+    const fields = habit.kind === 'english'
+      ? [{ key: 'minutes', label: '学习时长（分钟，可选）', value: rec.minutes || '' }, { key: 'note', label: '备注（可选）', type: 'textarea', value: rec.note || '' }]
+      : [{ key: 'note', label: '备注（可选）', type: 'textarea', value: rec.note || '' }];
+    openForm('添加备注 · ' + habit.name, fields, null, (fd) => {
+      if (habit.kind === 'english') rec.minutes = Number(fd.minutes) || 0;
+      rec.note = fd.note || '';
       save(); render(); toast('已保存备注 🌿');
     });
+  }
+  // 习惯管理：新增 / 编辑 / 删除（删除仅删配置，历史数据完全保留）
+  function homeHabitManage() {
+    const s = App.state;
+    if (!Array.isArray(s.habits)) s.habits = [];
+    const rows = s.habits.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((h) => {
+      const off = h.active === false ? ' · 已停用' : '';
+      const kindLabel = h.kind === 'english' ? '英语历史' : h.kind === 'health' ? '健康历史' : '自定义';
+      return `<div class="hm-row">
+        <span class="hm-ic">${esc(h.icon || '🌱')}</span>
+        <span class="hm-n">${esc(h.name)}${off}</span>
+        <span class="hm-k">${kindLabel}</span>
+        <button class="mini" data-act="home-habit-edit" data-id="${h.id}">编辑</button>
+        <button class="mini ghost" data-act="home-habit-delete" data-id="${h.id}">删除</button>
+      </div>`;
+    }).join('') || '<div class="muted tiny">还没有习惯。</div>';
+    showModal(`<h3>⚙️ 习惯管理</h3>
+      <div class="hm-tip">系统已内置「英语」「健康」并关联原有打卡数据。删除习惯 <b>仅删除配置，历史打卡完全保留</b>。</div>
+      <div class="hm-list">${rows}</div>
+      <div style="margin-top:10px"><button class="btn sm" data-act="home-habit-add">＋ 新增习惯</button></div>
+      <div class="modal-actions"><button class="btn ghost" data-act="close-modal">关闭</button></div>`);
+  }
+  function homeHabitAdd() {
+    openForm('新增习惯', [
+      { key: 'name', label: '习惯名称', value: '' },
+      { key: 'icon', label: '图标（emoji，可选）', value: '🌱' },
+      { key: 'kind', label: '类型', type: 'select', options: [
+        { v: 'custom', t: '自定义（新打卡记录）' },
+        { v: 'english', t: '关联英语历史（保留原有英语打卡）' },
+        { v: 'health', t: '关联健康历史（保留原有健康打卡）' },
+      ], value: 'custom' },
+    ], null, (fd) => {
+      const name = (fd.name || '').trim(); if (!name) { toast('请填写名称'); return; }
+      App.state.habits.push({ id: uid(), name, icon: ((fd.icon || '🌱').trim() || '🌱'), kind: fd.kind || 'custom', active: true, order: (App.state.habits.length + 1), createdAt: today() });
+      save(); render(); homeHabitManage(); toast('已添加习惯 🌱');
+    });
+  }
+  function homeHabitEdit(habitId) {
+    const h = App.state.habits.find((x) => x.id === habitId); if (!h) return;
+    openForm('编辑习惯', [
+      { key: 'name', label: '名称', value: h.name || '' },
+      { key: 'icon', label: '图标', value: h.icon || '🌱' },
+      { key: 'kind', label: '类型', type: 'select', options: [
+        { v: 'custom', t: '自定义' }, { v: 'english', t: '关联英语历史' }, { v: 'health', t: '关联健康历史' },
+      ], value: h.kind || 'custom' },
+      { key: 'active', label: '是否显示在首页', type: 'select', options: [{ v: 'true', t: '显示' }, { v: 'false', t: '停用' }], value: h.active === false ? 'false' : 'true' },
+    ], null, (fd) => {
+      h.name = (fd.name || '').trim() || h.name;
+      h.icon = ((fd.icon || '').trim()) || h.icon;
+      h.kind = fd.kind || h.kind;
+      h.active = fd.active !== 'false';
+      save(); render(); homeHabitManage(); toast('已保存');
+    });
+  }
+  function homeHabitDelete(habitId) {
+    const h = App.state.habits.find((x) => x.id === habitId); if (!h) return;
+    if (!window.confirm('确定删除习惯「' + h.name + '」？\n\n历史打卡数据完全保留，不受影响。')) return;
+    App.state.habits = App.state.habits.filter((x) => x.id !== habitId);
+    save(); render(); homeHabitManage(); toast('已删除习惯（历史保留）');
   }
   // 重要日期管理：系统节假日只读内置，用户自定义存 s.dates（可增删，不碰系统数据）
   function homeDateManage() {
@@ -2002,8 +2102,12 @@
       case 'home-add-task': homeAddTask(); break;
       case 'home-clear-task': { const inp = $('#home-task-title'); if (inp) inp.value = ''; const sel = $('#home-task-cat'); if (sel) sel.value = 'edu'; break; }
       case 'home-quote': App.homeQuoteShift = (App.homeQuoteShift || 0) + 1; render(); break;
-      case 'home-toggle-checkin': homeToggleCheckin(el.dataset.kind); break;
-      case 'home-edit-note': homeEditNote(el.dataset.kind); break;
+      case 'home-toggle-checkin': toggleHabit(id); break;
+      case 'home-edit-note': editHabitNote(id); break;
+      case 'home-habit-manage': homeHabitManage(); break;
+      case 'home-habit-add': homeHabitAdd(); break;
+      case 'home-habit-edit': homeHabitEdit(id); break;
+      case 'home-habit-delete': homeHabitDelete(id); break;
       case 'home-date-manage': homeDateManage(); break;
       case 'home-del-date': { remove(s.dates, id); save(); homeDateManage(); break; }
       case 'home-dm-add': {

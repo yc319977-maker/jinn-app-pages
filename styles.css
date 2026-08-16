@@ -148,6 +148,9 @@ header.topbar {
 .chip.grow { background: #FCF3DA; color: #A9832F; }
 .chip.company { background: #E7E2F2; color: #6B5B95; }
 .chip.private { background: #ECECEC; color: #7A7A7A; }
+.chip.personal { background: #EAF1F2; color: #3E7CA0; }
+.chip.work { background: #F3ECF7; color: #6B5B95; }
+.chip.ip { background: #EAF1E2; color: #5C8A57; }
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .mini {
   font-size: 12px; padding: 5px 10px; border-radius: 9px; background: var(--bg-soft);

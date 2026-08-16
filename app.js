@@ -26,18 +26,18 @@
     return n;
   }
   // 任务 / 记录统一分类常量（单一来源：所有下拉框、标签、配色都从这里取）
+  // 任务分类统一为 5 类（新增/编辑任务下拉唯一来源）。历史旧分类值(biz/grow/company/private/content/无) 一律不改数据，仅经 LEGACY_CAT_LABELS 兜底显示。
   const TASK_CATS = [
-    { v: '', t: '无' },
-    { v: 'edu', t: '教育' },
-    { v: 'content', t: '内容' },
+    { v: 'personal', t: '个人' },
+    { v: 'work', t: '工作' },
     { v: 'ecom', t: '电商' },
-    { v: 'biz', t: '商业' },
-    { v: 'grow', t: '成长' },
-    { v: 'company', t: '公司' },
-    { v: 'private', t: '私人' },
+    { v: 'ip', t: 'IP内容' },
+    { v: 'edu', t: '教育' },
   ];
-  const catName = (c) => { const x = TASK_CATS.find((o) => o.v === c); return x ? x.t : ''; };
-  const catClass = (c) => { const x = TASK_CATS.find((o) => o.v === c); return x && x.v ? x.v : ''; };
+  // 历史旧分类显示兜底（task.cat 值绝不改写，仅保证旧值仍能正确显示名称/配色）
+  const LEGACY_CAT_LABELS = { '': '未分类', content: '内容', biz: '商业', grow: '成长', company: '公司', private: '私人' };
+  const catName = (c) => { const x = TASK_CATS.find((o) => o.v === c); return x ? x.t : (LEGACY_CAT_LABELS[c] || ''); };
+  const catClass = (c) => { const x = TASK_CATS.find((o) => o.v === c); return x ? x.v : (c || ''); };
   // 任务类型统一常量（单一来源：正式任务表单、标签从此取）
   const TASK_TYPES = [
     { v: 'core', t: '核心推进' },
@@ -1275,17 +1275,25 @@
       html += block;
     });
 
-    // —— 最近成长痕迹：与首页同源，读 tasks.filter(done) ——
-    const trace = s.tasks.filter((t) => t.done && !t.canceled)
-      .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
-      .slice(0, 8);
-    html += `<div class="card"><h3>📚 最近成长痕迹 <span class="tag">已完成事项</span></h3>`;
-    if (trace.length) {
-      html += `<div class="home-list">` + trace.map((t) =>
-        `<div class="home-li"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
-      ).join('') + `</div>`;
-    } else {
-      html += `<div class="empty"><span class="em">📚</span>还没有完成的记录，完成一件事就会留在这里。</div>`;
+    // —— 最近成长痕迹：与首页同源，读 tasks.filter(done)；折叠逻辑复用首页（App.folds['trace']）——
+    const traceAll = s.tasks.filter((t) => t.done && !t.canceled)
+      .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')));
+    const trace = traceAll.slice(0, 6);
+    const traceOpen = App.folds['trace'];
+    html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="trace">
+      <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span>📚 最近成长痕迹
+      <span class="tag">${traceAll.length} 条</span></h3>`;
+    if (traceOpen) {
+      if (trace.length) {
+        html += `<div class="home-list">` + trace.map((t) =>
+          `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+        ).join('') + `</div>`;
+      } else {
+        html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
+      }
+      html += `<button class="btn soft sm" data-act="nav" data-id="growth" style="margin-top:8px">看全部 →</button>`;
+    } else if (trace.length) {
+      html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(trace[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
     }
     html += `</div>`;
 
@@ -2466,7 +2474,8 @@
     openForm(id ? '编辑任务' : '新建任务', [
       { key: 'title', label: '内容', value: t.title, type: 'textarea' },
       { key: 'type', label: '类型', type: 'select', options: TASK_TYPES, value: t.type },
-      { key: 'cat', label: '分类', type: 'select', options: TASK_CATS, value: t.cat },
+      // 分类下拉：编辑历史旧分类任务时，自动补一条旧值选项并选中，保存后原 cat 不变（绝不静默改成新类）
+      { key: 'cat', label: '分类', type: 'select', options: (id && t.cat && !TASK_CATS.find((o) => o.v === t.cat)) ? TASK_CATS.concat([{ v: t.cat, t: catName(t.cat) || t.cat }]) : TASK_CATS, value: t.cat },
       { key: 'date', label: '日期', value: t.date || today() },
     ], null, (fd) => {
       if (id) Object.assign(t, fd); else App.state.tasks.push(Object.assign({ id: uid(), done: false, canceled: false, order: Date.now() }, fd));

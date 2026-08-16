@@ -120,22 +120,28 @@ header.topbar {
 .hero .big { font-size: 22px; font-weight: 800; margin: 4px 0 2px; }
 .hero .sub { color: var(--ink-soft); font-size: 13.5px; }
 
-/* 每日进步：一个核心工作卡片（合并原 hero + 「🌟 今日进度」；同源 tasks） */
-.daily-core { padding-bottom: 18px; }
-.daily-core-head {
+/* 每日进步：顶部轻量区 + 下方四个独立模块（同源 tasks，顶部只轻量显示「今天完成 X 条」） */
+.daily-top { padding-bottom: 18px; }
+.daily-top-head {
   background: linear-gradient(135deg, #FFF6E9, #F1F5E8);
   border: 1px solid #F6E6CF; border-radius: 14px;
-  padding: 18px; margin: 0 0 14px;
+  padding: 18px; margin: 0 0 12px;
 }
-.daily-core-head .hi { font-size: 13px; color: var(--ink-soft); }
-.daily-core-head .big { font-size: 22px; font-weight: 800; margin: 4px 0 2px; line-height: 1.25; }
-.daily-core-head .sub { color: var(--ink-soft); font-size: 13.5px; margin-top: 2px; }
-/* 卡片内子区块与首部左右对齐 */
-.daily-core > .sub-h { padding: 0 2px; }
-.daily-core .quick-add,
-.daily-core > div[style*="margin-top:8px"] { padding: 0 2px; }
-.daily-core .empty,
-.daily-core .task-row { padding-left: 2px; padding-right: 2px; }
+.daily-top-head .hi { font-size: 13px; color: var(--ink-soft); }
+.daily-top-head .big { font-size: 22px; font-weight: 800; margin: 4px 0 2px; line-height: 1.25; }
+.daily-top-head .sub { color: var(--ink-soft); font-size: 13.5px; margin-top: 2px; }
+/* 「今天完成 X 条」轻量可点击入口（点击进入 todayFilter='done' 真实过滤视图） */
+.done-entry {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  margin-top: 10px; padding: 12px 14px; border-radius: 12px;
+  background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow);
+  cursor: pointer; text-align: left;
+}
+.done-entry .de-ic { color: var(--green); font-weight: 800; font-size: 16px; }
+.done-entry .de-t { font-size: 14px; font-weight: 600; color: var(--ink); }
+.done-entry .de-n { font-size: 15px; font-weight: 800; color: var(--green); }
+.done-entry .de-arrow { margin-left: auto; color: var(--ink-soft); font-size: 13px; }
+.done-entry:active { background: var(--bg-soft); }
 
 .task-row {
   display: flex; align-items: flex-start; gap: 11px; padding: 11px 4px;

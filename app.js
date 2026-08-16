@@ -597,7 +597,7 @@
         : s.tasks.filter((t) => !t.canceled && t.done && (t.doneAt || t.date) === td);
       const label = App.todayFilter === 'todo' ? '今日待办（核心 + 普通）' : '今日已完成';
       let h = `<div class="hero"><div class="hi">${greet()}</div><div class="big">${label}</div>
-        <div class="sub">${list.length} 项 · 真实任务，点方框可切换状态</div></div>`;
+        <div class="sub">${list.length} 项 · 真实任务</div></div>`;
       h += `<div class="card"><h3>✅ ${label} <span class="tag">${list.length} 项</span></h3>`;
       h += list.length ? list.map(taskRow).join('') : `<div class="empty"><span class="em">🌿</span>这里还没有任务。</div>`;
       h += `</div><div style="margin-top:10px"><button class="btn ghost sm" data-act="today-clear-filter">← 返回每日进度</button></div>`;
@@ -610,43 +610,39 @@
     const pending = tasks.filter((t) => t.date < td && !t.done);
     const doneToday = tasks.filter((t) => t.done && (t.doneAt || t.date) === td);
 
-    // —— 每日进步：一个核心工作卡片（合并原 hero + 「🌟 今日进度」；同源 tasks，结构无图片占位）——
-    let html = `<div class="card daily-core">
-      <div class="daily-core-head">
+    // —— 每日进步：顶部轻量区 + 下方四个独立模块（同源 tasks；顶部只轻量显示「今天完成 X 条」可点击，不展示完成任务列表）——
+    const cnDate = `${td.slice(0, 4)}年${+td.slice(5, 7)}月${+td.slice(8, 10)}日`;
+    // 【顶部轻量区域】
+    let html = `<div class="card daily-top">
+      <div class="daily-top-head">
         <div class="hi">${greet()}</div>
         <div class="big">今天，先推进最重要的事</div>
-        <div class="sub">${td} · 今日进度：完成 ${doneToday.length} · 必做 ${core.length} · 点方框可切换</div>
+        <div class="sub">${cnDate}</div>
       </div>`;
+    // 「今天完成 X 条」轻量入口：点击进入今日已完成真实过滤视图（todayFilter='done'；直接读 App.state.tasks，不复制/不新建）
+    html += `<button class="done-entry" data-act="home-jump" data-kind="done">
+      <span class="de-ic">✓</span><span class="de-t">今天完成</span><span class="de-n">${doneToday.length}</span><span class="de-arrow">条 →</span>
+    </button>`;
+    html += `</div>`;
 
-    // ✅ 今天完成
-    if (doneToday.length) {
-      html += `<div class="sub-h">✅ 今天完成</div>`;
-      html += doneToday.slice(0, 8).map(taskRow).join('');
-      html += `<div class="affirm">🌱 今天你又积累了一步。距离目标，又近了一点。</div>`;
-    } else {
-      html += `<div class="empty"><span class="em">🌿</span>今天还没完成任何事，从下面任一项开始吧。</div>`;
-    }
-
-    // 🎯 今日必做（核心推进）
-    if (core.length) {
-      html += `<div class="sub-h">🎯 今日必做（核心推进）</div>`;
-      html += core.map(taskRow).join('');
-    }
+    // 🎯 今日必做（核心推进）—— 独立模块
+    html += `<div class="card"><h3>🎯 今日必做 <span class="tag">核心推进</span></h3>`;
+    html += core.length ? core.map(taskRow).join('') : `<div class="empty"><span class="em">🎯</span>今天还没有必须推进的核心事项。</div>`;
     html += `<div class="quick-add"><input id="qa-core" placeholder="今天最影响长期发展的一件事…">
-      <button class="btn sm" data-act="add-task" data-type="core">添加</button></div>`;
+      <button class="btn sm" data-act="add-task" data-type="core">添加</button></div></div>`;
 
-    // 📝 今日待办
-    html += `<div class="sub-h">📝 今日待办</div>`;
-    html += todo.map(taskRow).join('') || `<div class="empty"><span class="em">🍃</span>暂无待办，轻松一点。</div>`;
+    // 📝 今日待办 —— 独立模块
+    html += `<div class="card"><h3>📝 今日待办 <span class="tag">普通任务</span></h3>`;
+    html += todo.length ? todo.map(taskRow).join('') : `<div class="empty"><span class="em">🍃</span>暂无待办，轻松一点。</div>`;
     html += `<div class="quick-add"><input id="qa-todo" placeholder="添加一个普通任务…">
-      <button class="btn soft sm" data-act="add-task" data-type="todo">添加</button></div>`;
+      <button class="btn soft sm" data-act="add-task" data-type="todo">添加</button></div></div>`;
 
-    // 🔄 需要继续推进（未完成旧事项；默认折叠，点标题展开）
+    // ↗ 需要继续推进（未完成旧事项；默认折叠，点标题展开）—— 独立模块
     if (pending.length) {
       const open = App.folds['pending'];
-      html += `<div class="sub-h fold-h" data-act="toggle-fold" data-id="pending">
-        <span class="fold-ic">${open ? '▾' : '▸'}</span>🤝 需要继续推进
-        <span class="tag">${pending.length} 项来自之前的日子${open ? '' : ' · 点此展开'}</span></div>`;
+      html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="pending">
+        <span class="fold-ic">${open ? '▾' : '▸'}</span>↗ 需要继续推进
+        <span class="tag">${pending.length} 项来自之前的日子${open ? '' : ' · 点此展开'}</span></h3>`;
       if (open) {
         html += pending.map((t) => {
           const acts = `<button class="mini green" data-act="cont-task" data-id="${t.id}">继续今天</button>
@@ -655,16 +651,15 @@
           return taskRow(t, acts);
         }).join('');
       } else {
-        html += `<div class="tiny muted">这些是之前没做完的事，不急，有空再处理。展开后可「继续今天 / 延期 / 取消」。</div>`;
+        html += `<div class="tiny muted" style="margin-top:-4px">这些是之前没做完的事，不急，有空再处理。展开后可「继续今天 / 延期 / 取消」。</div>`;
       }
+      html += `</div>`;
     }
 
-    // ⚡ 临时记录（点击打开大编辑器）
-    html += `<div class="sub-h">⚡ 临时记录</div>`;
-    html += temp.map(taskRow).join('') || `<div class="empty"><span class="em">💭</span>突然的想法、老板安排、客户回复，都能随手记这里。</div>`;
-    html += `<div style="margin-top:8px"><button class="btn soft sm" data-act="home-add-temp-modal">＋ 写一下临时记录</button></div>`;
-
-    html += `</div>`;
+    // ⚡ 临时记录（点击打开大编辑器）—— 独立模块
+    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点击打开大编辑器</span></h3>`;
+    html += temp.length ? temp.map(taskRow).join('') : `<div class="empty"><span class="em">💭</span>突然的想法、老板安排、客户回复，都能随手记这里。</div>`;
+    html += `<div style="margin-top:8px"><button class="btn soft sm" data-act="home-add-temp-modal">＋ 写一下临时记录</button></div></div>`;
 
     $('#view').innerHTML = html;
     bindQuickAdd();
@@ -902,28 +897,28 @@
       html += `</div>`;
     }
 
-    // —— 最近成长痕迹（折叠式；同源 tasks；结构预留可扩展入口，本轮不接 AI）——
+    // —— 最近成长痕迹（折叠式；同源 tasks；展开显示全部，不做 6 条上限）——
     const traceAll = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')));
-    const trace = traceAll.slice(0, 6);
+    const tracePreview = traceAll.slice(0, 6); // 仅折叠态摘要用；展开渲染全部 traceAll
     const traceOpen = App.folds['trace'];
     html += `<div class="card hmod hmod-trace">
       <div class="hmod-head fold-h" data-act="toggle-fold" data-id="trace">
         <span class="hmod-ic">📚</span><h3>最近成长痕迹</h3>
         <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span><span class="hbadge">${traceAll.length} 条</span>
       </div>`;
-    // 「看全部」常驻：折叠态也可点；点击进入成长地图（与成长地图同源 nav 逻辑）
-    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="nav" data-id="growth">看全部 →</button></div>`;
+    // 「看全部」常驻：折叠态也可点；点击展开成长痕迹并进入成长地图（显示全部真实完成任务）
+    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="trace-see-all">看全部 →</button></div>`;
     if (traceOpen) {
-      if (trace.length) {
-        html += `<div class="home-list">` + trace.map((t) =>
+      if (traceAll.length) {
+        html += `<div class="home-list">` + traceAll.map((t) =>
           `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
         ).join('') + `</div>`;
       } else {
         html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
       }
-    } else if (trace.length) {
-      html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(trace[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
+    } else if (tracePreview.length) {
+      html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(tracePreview[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
     }
     html += `</div>`;
 
@@ -1277,26 +1272,26 @@
       html += block;
     });
 
-    // —— 最近成长痕迹：与首页同源，读 tasks.filter(done)；折叠逻辑复用首页（App.folds['trace']）——
+    // —— 最近成长痕迹：与首页同源同逻辑（数据源 / 折叠标志 / 数量 / 查看全部 完全一致）；展开显示全部，不做 6 条上限 ——
     const traceAll = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')));
-    const trace = traceAll.slice(0, 6);
+    const tracePreview = traceAll.slice(0, 6); // 仅折叠态摘要用；展开渲染全部 traceAll
     const traceOpen = App.folds['trace'];
     html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="trace">
       <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span>📚 最近成长痕迹
       <span class="tag">${traceAll.length} 条</span></h3>`;
-    // 「看全部」常驻：折叠态也可点；点击进入成长地图（nav 逻辑与首页一致）
-    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="nav" data-id="growth">看全部 →</button></div>`;
+    // 「看全部」常驻：折叠态也可点；点击展开成长痕迹并进入成长地图（与首页同源 trace-see-all，显示全部）
+    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="trace-see-all">看全部 →</button></div>`;
     if (traceOpen) {
-      if (trace.length) {
-        html += `<div class="home-list">` + trace.map((t) =>
+      if (traceAll.length) {
+        html += `<div class="home-list">` + traceAll.map((t) =>
           `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
         ).join('') + `</div>`;
       } else {
         html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
       }
-    } else if (trace.length) {
-      html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(trace[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
+    } else if (tracePreview.length) {
+      html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(tracePreview[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
     }
     html += `</div>`;
 
@@ -2318,6 +2313,7 @@
     const s = App.state;
     switch (act) {
       case 'nav': navigate(id); break;
+      case 'trace-see-all': { App.folds['trace'] = true; navigate('growth'); break; } // 看全部：展开成长痕迹并进入成长地图（显示全部真实完成任务）
       case 'open-sheet': openSheet('选择模块', MODULES.map((m) => ({ icon: m.icon, label: m.name, onClick: () => navigate(m.id) }))); break;
       case 'close-modal': closeModal(); break;
       case 'fold': { const t = el.dataset.target; App.folds[t] = !App.folds[t]; render(); break; }

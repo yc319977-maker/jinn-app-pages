@@ -388,6 +388,10 @@ header.topbar {
   color: #fff; font-size: 30px; font-weight: 800; text-decoration: none;
 }
 .insp-cover--ph { /* 占位：平台首字母 */ }
+/* 兜底封面：按平台 + 标题生成的有区分度视觉封面（非真实封面时使用） */
+.insp-cover--fb { flex-direction: column; gap: 3px; }
+.insp-cover--fb .fb-ico { font-size: 26px; line-height: 1; }
+.insp-cover--fb .fb-plat { font-size: 12px; font-weight: 700; opacity: .92; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
 .insp-body { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 12px; }
 .insp-sum {
   font-size: 12.5px; color: var(--ink-soft); line-height: 1.5;
@@ -417,6 +421,45 @@ header.topbar {
     content: ''; position: fixed; left: 0; top: 0; bottom: 0; width: 4px; z-index: 40;
     background: linear-gradient(90deg, rgba(232,168,124,.55), transparent); pointer-events: none;
   }
-  .insp-cover { width: 76px; min-height: 76px; }
+  .insp-cover { width: 100%; aspect-ratio: 16 / 9; min-height: 84px; }
   .insp-sum { -webkit-line-clamp: 2; }
+}
+
+/* ============================================================
+   首页（个人工作驾驶舱）——轮次 M
+   视觉优先级：①快速添加任务/临时记录 ②今日状态/拍摄计划 ③日期/金句/成长痕迹
+   移动端优先：第一屏完成添加任务/临时记录/查看状态
+   ============================================================ */
+/* 快速添加任务：输入框 + 区域下拉 + 操作，移动端竖排、桌面横排 */
+.home-add { display: flex; flex-direction: column; gap: 9px; }
+.home-add select { max-width: 100%; }
+.home-add-acts { display: flex; gap: 8px; }
+.home-add-acts .btn { flex: 0 0 auto; }
+/* 本月打卡统计：三列小卡 */
+.home-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.home-stat { background: var(--bg-soft); border-radius: 14px; padding: 12px 10px; text-align: center; }
+.home-stat .n { font-size: 24px; font-weight: 800; color: var(--terra-d); line-height: 1.1; }
+.home-stat .l { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+/* 首页列表（拍摄计划 / 成长痕迹）：可点击进入对应模块 */
+.home-list { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.home-li {
+  display: flex; align-items: center; gap: 10px; padding: 11px 13px;
+  background: var(--bg-soft); border-radius: 13px; cursor: pointer; transition: all .15s;
+}
+.home-li:hover { background: #fff; box-shadow: var(--shadow); }
+.home-li-t { flex: 1; min-width: 0; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 重要日期 */
+.home-date { background: var(--bg-soft); border-radius: 13px; padding: 12px 14px; }
+.home-date-d { font-size: 15px; font-weight: 700; }
+.home-date-m { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+/* 今日金句 */
+.home-quote { background: linear-gradient(135deg, #FFF7EA, #F1F4EC); border: 1px solid #F4E6CF; }
+.home-quote .hq-ic { font-size: 22px; }
+.home-quote .hq-t { font-size: 15.5px; font-weight: 600; line-height: 1.7; margin-top: 4px; }
+.home-quote .hq-s { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; }
+@media (max-width: 540px) {
+  .home-stats { gap: 7px; }
+  .home-stat { padding: 10px 6px; border-radius: 12px; }
+  .home-stat .n { font-size: 21px; }
+  .home-stat .l { font-size: 11px; }
 }

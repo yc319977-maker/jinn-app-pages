@@ -35,7 +35,7 @@
   }
 
   /* ---------------- 状态 ---------------- */
-  const App = window.App = { state: null, current: 'today', folds: {} };
+  const App = window.App = { state: null, current: 'home', folds: {}, homeQuoteShift: 0 };
 
   function ensure() {
     const s = App.state;
@@ -47,6 +47,7 @@
     if (!s.meta) s.meta = {};
     if (!Array.isArray(s.trash)) s.trash = [];
     if (!Array.isArray(s.purged)) s.purged = [];
+    if (!Array.isArray(s.dates)) s.dates = [];   // 首页「重要日期」：仅补空数组，零迁移
   }
 
   let saveTimer = null;
@@ -61,6 +62,7 @@
 
   /* ---------------- 模块导航 ---------------- */
   const MODULES = [
+    { id: 'home', name: '首页', short: '首页', icon: '🏠' },
     { id: 'today', name: '今日工作台', short: '今日', icon: '🌱', home: true },
     { id: 'month', name: '成长月历', short: '月历', icon: '📅' },
     { id: 'growth', name: '成长地图', short: '成长', icon: '🗺️' },
@@ -582,15 +584,199 @@
       el.onkeydown = (e) => { if (e.key === 'Enter') add(); };
     });
   }
-  function addTask(type, title, date) {
+  function addTask(type, title, date, cat) {
     const s = App.state;
     if (!title) return;
     const d = date || today();
     if (type === 'core' && s.tasks.filter((t) => t.type === 'core' && t.date === d && !t.done && !t.canceled).length >= 3) {
       toast('核心推进最多 3 项，先完成或调整已有的 🌟'); return;
     }
-    s.tasks.push({ id: uid(), type, title, cat: '', date: d, done: false, canceled: false, order: Date.now() });
+    s.tasks.push({ id: uid(), type, title, cat: cat || '', date: d, done: false, canceled: false, order: Date.now() });
     save(); render();
+  }
+
+  /* ============================================================
+   *  渲染：首页（个人工作驾驶舱）——轮次 M
+   *  数据安全：全部读现有数据，不新建第二套库、不写示例、不迁移字段。
+   *  - 快速添加任务 / 临时记录 → 复用 s.tasks（type=addTask 现有逻辑）
+   *  - 今日状态 → 读 english/health/income 本月打卡天数（distinct day）
+   *  - 拍摄计划 → 读 content.status==='待制作'
+   *  - 重要日期 → 读 s.dates（ensure 仅补空数组）
+   *  - 成长痕迹 → 读 tasks.filter(done)
+   *  - 金句 → 内置池中英文池，按日切换，不写 state、不调第三方 API
+   * ============================================================ */
+  function renderHome() {
+    const s = App.state;
+    const td = today();
+    const ym = td.slice(0, 7); // 当前年月
+
+    // —— 本月打卡天数（按 distinct day 计，不硬编码目标天数）——
+    const enDays = new Set(s.english.filter((e) => (e.date || '').slice(0, 7) === ym).map((e) => e.date));
+    const heDays = new Set(s.health.filter((h) => (h.date || '').slice(0, 7) === ym).map((h) => h.date));
+    const incDays = new Set(s.income.filter((i) => (i.date || '').slice(0, 7) === ym).map((i) => i.date));
+
+    // —— 拍摄计划：内容宇宙 status=待制作 ——
+    const shoot = s.content.filter((c) => c.status === '待制作');
+
+    // —— 最近成长痕迹：已完成任务（按 doneAt||date 倒序，取前 6）——
+    const trace = s.tasks.filter((t) => t.done && !t.canceled)
+      .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
+      .slice(0, 6);
+
+    // —— 下一个重要日期：s.dates ——
+    const dates = (s.dates || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const upcoming = dates.filter((d) => d.date >= td);
+    const nextDate = upcoming[0] || dates[dates.length - 1] || null;
+
+    // 今日金句
+    const q = homeQuote();
+
+    let html = `
+    <div class="hero">
+      <div class="hi">${greet()}</div>
+      <div class="big">jinn，今天也慢慢来 🌿</div>
+      <div class="sub">${td} · 最常用的几件事，都在这一屏</div>
+    </div>`;
+
+    // —— 第一优先：快速添加任务 + 临时记录 ——
+    html += `<div class="card"><h3>➕ 快速添加任务 <span class="tag">写任务名 + 选区域，直接记到今日</span></h3>
+      <div class="home-add">
+        <input id="home-task-title" placeholder="今天要做的任务…">
+        <select id="home-task-cat" aria-label="区域">
+          <option value="edu">教育</option>
+          <option value="content">内容</option>
+          <option value="ecom">电商</option>
+          <option value="biz">商业</option>
+          <option value="grow">成长</option>
+        </select>
+        <div class="home-add-acts">
+          <button class="btn sm" data-act="home-add-task">保存</button>
+          <button class="btn ghost sm" data-act="home-clear-task">清空</button>
+        </div>
+      </div></div>`;
+
+    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">冒出来的想法随手记</span></h3>
+      <div class="quick-add"><input id="home-temp" placeholder="临时事项 / 灵感 / 一句话…">
+        <button class="btn ghost sm" data-act="home-add-temp">记一下</button></div></div>`;
+
+    // —— 第二优先：今日状态/打卡 + 拍摄计划 ——
+    html += `<div class="card"><h3>🌟 今日状态 <span class="tag">本月打卡天数</span></h3>
+      <div class="home-stats">
+        <div class="home-stat"><div class="n">${enDays.size}</div><div class="l">英语 · 本月 ${enDays.size} 天</div></div>
+        <div class="home-stat"><div class="n">${heDays.size}</div><div class="l">健康 · 本月 ${heDays.size} 天</div></div>
+        <div class="home-stat"><div class="n">${incDays.size}</div><div class="l">收入 · 本月 ${incDays.size} 天</div></div>
+      </div>
+      <button class="btn soft sm" data-act="nav" data-id="self" style="margin-top:10px">去打卡 →</button></div>`;
+
+    html += `<div class="card"><h3>🎬 拍摄计划 <span class="tag">内容宇宙 · 待制作 ${shoot.length} 条</span></h3>`;
+    if (shoot.length) {
+      html += `<div class="home-list">` + shoot.slice(0, 6).map((c) => {
+        const se = seriesOf(c);
+        return `<div class="home-li" data-act="nav" data-id="content"><span class="home-li-t">${esc(c.title || '(未命名选题)')}</span>${renderSeriesTag(se)}</div>`;
+      }).join('') + `</div>`;
+    } else {
+      html += `<div class="empty"><span class="em">🎬</span>内容宇宙还没有「待制作」选题，去内容宇宙加一个吧。</div>`;
+    }
+    html += `</div>`;
+
+    // —— 第三优先：重要日期 + 金句 + 成长痕迹 ——
+    html += `<div class="card"><h3>📅 重要日期 <span class="tag">${nextDate ? (nextDate.date >= td ? '最近一个' : '最近一个（已过期）') : '还没有'}</span></h3>`;
+    if (nextDate) {
+      const diff = Math.round((new Date(nextDate.date).getTime() - new Date(td).getTime()) / 86400000);
+      const dlabel = nextDate.date >= td ? (diff === 0 ? '就是今天' : '还有 ' + diff + ' 天') : '已过 ' + Math.abs(diff) + ' 天';
+      html += `<div class="home-date"><div class="home-date-d">${esc(nextDate.title)}</div>
+        <div class="home-date-m">${esc(nextDate.date)} · ${dlabel}</div></div>`;
+    } else {
+      html += `<div class="empty"><span class="em">📅</span>还没有重要日期，加一个纪念日或截止日吧。</div>`;
+    }
+    html += `<div class="quick-add" style="margin-top:8px"><input id="home-date-title" placeholder="日期标题，如 签证截止">
+      <input id="home-date-date" type="date" style="max-width:158px"></div>
+      <div class="home-add-acts" style="margin-top:8px"><button class="btn sm" data-act="home-add-date">添加</button></div></div>`;
+
+    html += `<div class="card home-quote"><div class="hq-ic">💡</div>
+      <div class="hq-t">${esc(q.t)}</div>
+      ${q.s ? `<div class="hq-s">— ${esc(q.s)}</div>` : ''}
+      <button class="mini ghost" data-act="home-quote" style="margin-top:6px">换一句</button></div>`;
+
+    html += `<div class="card"><h3>📚 最近成长痕迹 <span class="tag">已完成事项</span></h3>`;
+    if (trace.length) {
+      html += `<div class="home-list">` + trace.map((t) =>
+        `<div class="home-li" data-act="nav" data-id="today"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+      ).join('') + `</div>`;
+    } else {
+      html += `<div class="empty"><span class="em">📚</span>还没有完成的记录，完成一件事就会留在这里。</div>`;
+    }
+    html += `<button class="btn soft sm" data-act="nav" data-id="today" style="margin-top:8px">看全部 →</button></div>`;
+
+    $('#view').innerHTML = html;
+    setPage('首页');
+    bindHomeQuickAdd();
+  }
+
+  function bindHomeQuickAdd() {
+    const t = $('#home-task-title');
+    if (t) t.onkeydown = (e) => { if (e.key === 'Enter') homeAddTask(); };
+    const tmp = $('#home-temp');
+    if (tmp) tmp.onkeydown = (e) => { if (e.key === 'Enter') homeAddTemp(); };
+  }
+  function homeAddTask() {
+    const inp = $('#home-task-title'); const sel = $('#home-task-cat');
+    const v = inp ? inp.value.trim() : '';
+    if (!v) { toast('先写个任务名吧 🌱'); return; }
+    const cat = sel ? sel.value : '';
+    addTask('todo', v, today(), cat); // 复用现有任务逻辑：默认普通待办，进今日工作台
+    toast('已添加到今日待办 🌱');
+  }
+  function homeAddTemp() {
+    const inp = $('#home-temp'); const v = inp ? inp.value.trim() : '';
+    if (!v) return;
+    addTask('temp', v); // 复用临时记录（type='temp'），同一套数据
+    toast('已记到临时记录 💭');
+  }
+  function homeAddDate() {
+    const t = $('#home-date-title'); const d = $('#home-date-date');
+    const v = t ? t.value.trim() : ''; const dv = d ? d.value : '';
+    if (!v || !dv) { toast('请填写标题和日期 📅'); return; }
+    const s = App.state;
+    if (!Array.isArray(s.dates)) s.dates = [];
+    s.dates.push({ id: uid(), title: v, date: dv, note: '' });
+    save(); render(); toast('已添加重要日期 📅');
+  }
+
+  // 今日金句：内置中英文池，按日确定性切换（day hash），不写 state、不调第三方 API。
+  // 「换一句」只在本次会话内叠加偏移（App.homeQuoteShift），不持久化。
+  const HOME_QUOTES = [
+    { t: '种一棵树最好的时间是十年前，其次是现在。', s: '谚语' },
+    { t: '慢慢来，比较快。', s: '李宗盛' },
+    { t: '你只管努力，剩下的交给时间。', s: '' },
+    { t: '今天的努力，是幸运的伏笔。', s: '' },
+    { t: '与其担心未来，不如现在好好努力。', s: '' },
+    { t: '把平凡的事做好，就是不平凡。', s: '' },
+    { t: '你不必很厉害才能开始，但你必须开始才能很厉害。', s: '' },
+    { t: '生活明朗，万物可爱。', s: '' },
+    { t: '所有伟大，都源于一个勇敢的开始。', s: '' },
+    { t: '心之所向，素履以往。', s: '' },
+    { t: '日拱一卒，功不唐捐。', s: '胡适' },
+    { t: '成长就是把哭声调成静音的过程。', s: '' },
+    { t: 'The secret of getting ahead is getting started.', s: 'Mark Twain' },
+    { t: 'It does not matter how slowly you go as long as you do not stop.', s: 'Confucius' },
+    { t: 'Small progress is still progress.', s: '' },
+    { t: 'Dream big, start small, act now.', s: '' },
+    { t: 'You are never too old to set another goal.', s: 'C.S. Lewis' },
+    { t: 'Well done is better than well said.', s: 'Benjamin Franklin' },
+    { t: 'Do the hard things first.', s: '' },
+    { t: 'Consistency is what transforms average into excellence.', s: '' },
+    { t: 'Fall seven times, stand up eight.', s: '日本谚语' },
+    { t: 'Action is the foundational key to all success.', s: 'Pablo Picasso' },
+    { t: 'Keep going. Everything you need will come to you.', s: '' },
+    { t: 'Today is a perfect day to begin.', s: '' },
+  ];
+  function homeQuote() {
+    const key = today();
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    const shift = App.homeQuoteShift || 0;
+    return HOME_QUOTES[(h + shift) % HOME_QUOTES.length];
   }
 
   /* ============================================================
@@ -811,16 +997,18 @@
       const todayIdx = {}; todayList.forEach((h, i) => { todayIdx[h.id] = i + 1; });
       if (!list.length) html += `<div class="empty"><span class="em">📡</span>还没有热点。点「刷新热点」试试。</div>`;
       list.forEach((h) => { html += renderHotItem(h, todayIdx[h.id]); });
-    } else {
-      const list = s.content.filter((x) => x.kind === inspKind).slice().reverse();
-      if (!list.length) html += `<div class="empty"><span class="em">💡</span>${inspKind === 'link' ? '还没有保存的链接，粘贴一个试试。' : '还没有随手记录的灵感。'}</div>`;
-      else {
-        // 灵感卡片「并排成网格」（手机 2 列、桌面 3 列），不是单卡内部左右
-        html += `<div class="insp-cards">`;
-        list.forEach((x) => { html += renderInspItem(x); });
-        html += `</div>`;
+    }       else {
+        const list = s.content.filter((x) => x.kind === inspKind).slice().reverse();
+        if (!list.length) html += `<div class="empty"><span class="em">💡</span>${inspKind === 'link' ? '还没有保存的链接，粘贴一个试试。' : '还没有随手记录的灵感。'}</div>`;
+        else if (inspKind === 'link') {
+          // 「链接」卡片并排成网格（手机 2 列、桌面 3 列）；「随手记录」保持上下列表，不进网格
+          html += `<div class="insp-cards">`;
+          list.forEach((x) => { html += renderInspItem(x); });
+          html += `</div>`;
+        } else {
+          list.forEach((x) => { html += renderInspItem(x); });
+        }
       }
-    }
     $('#view').innerHTML = html;
     const ql = $('#qa-link'); if (ql) ql.onkeydown = (e) => { if (e.key === 'Enter') { const v = ql.value.trim(); if (v) { addInspLink(v, $('#qa-link-title') ? $('#qa-link-title').value.trim() : ''); ql.value = ''; const lt = $('#qa-link-title'); if (lt) lt.value = ''; } } };
     const qn = $('#qa-note'); if (qn) qn.onkeydown = (e) => { if (e.key === 'Enter') { const v = qn.value.trim(); if (v) { addInspNote(v); qn.value = ''; } } };
@@ -851,20 +1039,28 @@
   }
   function renderHotItem(h, todayNo) {
     const fitCls = h.fit === '适合' ? 's2' : h.fit === '可参考' ? 's1' : 's4';
-    // 链接类型三档，明确区分「原内容」与「榜单/搜索」，绝不用榜单伪装成原视频
+    // 优先打开「具体原内容 URL」（contentUrl），没有才退回「热榜/搜索备用」（fallbackUrl）
+    // 绝不用热榜链接伪装成原视频
+    const contentUrl = h.contentUrl || (h.linkType === 'real' && h.link ? h.link : '');
+    const fallbackUrl = h.fallbackUrl || (h.linkType !== 'real' && h.link ? h.link : '');
     let linkTypeBadge, linkHtml;
-    if (h.linkType === 'real') {
+    if (contentUrl) {
+      const isVideo = /(抖音|视频号|B站|YouTube|西瓜)/.test(h.source || '');
+      const openLabel = h.linkType === 'weixin' ? '在微信打开 ↗' : (isVideo ? '查看原视频 ↗' : '查看原内容 ↗');
       linkTypeBadge = '<span class="badge s2">原内容链接</span>';
-      linkHtml = h.link ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开原内容 ↗</a>` : '—';
+      linkHtml = `<a class="chip link" href="${esc(contentUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${openLabel}</a>`;
     } else if (h.linkType === 'weixin') {
       linkTypeBadge = '<span class="badge warn">视频号 · 仅微信打开</span>';
-      linkHtml = h.link
-        ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">在微信打开 ↗</a>`
+      linkHtml = fallbackUrl
+        ? `<a class="chip link" href="${esc(fallbackUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">在微信打开 ↗</a>`
         : '<span class="tiny muted">视频号具体视频只能在微信内打开（粘贴该视频「分享链接」即可直达）。</span>';
-    } else {
+    } else if (fallbackUrl) {
       // 自动种子只能拿到「话题 / 榜单搜索页」，如实标注，不伪装成原视频
       linkTypeBadge = '<span class="badge warn">榜单 / 搜索参考</span>';
-      linkHtml = h.link ? `<a class="chip link" href="${esc(h.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开榜单 / 搜索 ↗</a>` : (h.source ? esc(h.source) : '—');
+      linkHtml = `<a class="chip link" href="${esc(fallbackUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">查看相关热榜 / 搜索 ↗</a>`;
+    } else {
+      linkTypeBadge = '<span class="badge warn">暂无具体链接</span>';
+      linkHtml = '<span class="tiny muted">自动热点暂无具体视频链接；点「编辑热点」粘贴真实分享链接即可直达原内容。</span>';
     }
     const a = h.analysis || {};
     const open = App.folds['hotanal-' + h.id] ? 'open' : '';
@@ -909,6 +1105,30 @@
       ${row('可借鉴的爆款形式', a.viralRef)}
     </div>`;
   }
+  // 灵感链接占位封面：按平台 + 标题生成「有区分度」的视觉封面（拿不到真实封面时的兜底，避免所有链接长得一样）
+  function hashStr(s) {
+    let h = 0; s = (s || '').toString();
+    for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+    return Math.abs(h);
+  }
+  const PLAT_ICON = { '小红书': '📕', '抖音': '🎵', '微博': '💬', '知乎': '📘', 'B站': '📺', '百度': '🔍', '今日头条': '📰', '视频号': '🟢', '微信公众号': '💚', 'YouTube': '▶️' };
+  function inspCoverFallback(pname, title) {
+    const base = platformColorOf(pname) || '#9DB8C9';
+    const hue = hashStr(pname + '|' + (title || '')) % 360;
+    const grad = 'linear-gradient(135deg,' + base + ' 0%,hsl(' + hue + ',52%,40%) 100%)';
+    return { grad: grad, icon: PLAT_ICON[pname] || '🔗', pname: pname };
+  }
+  // 重新尝试抓取真实封面：仅补充 image 字段，绝不删除/重建原记录；平台 CORS 限制时会失败并保留占位封面
+  function refetchCover(id) {
+    const x = find(App.state.content, id); if (!x || x.kind !== 'link') return;
+    if (!x.link) { toast('这条链接没有 URL，无法刷新'); return; }
+    toast('正在尝试重新获取封面…');
+    tryFetchMeta(x.link).then((meta) => {
+      const it = find(App.state.content, id); if (!it) return;
+      if (meta.image) { it.image = meta.image; save(); renderContent(); toast('封面已更新 ✅'); }
+      else { toast('未能获取到真实封面（平台 CORS 限制），已保留区分度占位封面'); }
+    }).catch(() => { toast('获取失败（平台 CORS 限制），已保留区分度占位封面'); });
+  }
   function renderInspItem(x) {
     if (x.kind === 'link') {
       let host = '';
@@ -916,9 +1136,10 @@
       const pname = detectPlatform(host);
       const pcolor = platformColorOf(pname);
       // 竖排卡片：封面在上、信息在下（外层 .insp-cards 负责「并排成网格」，不是单卡内部左右）
+      const fb = inspCoverFallback(pname, x.title);
       const cover = x.image
         ? `<a class="insp-cover" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="background-image:url('${esc(x.image)}')"></a>`
-        : `<a class="insp-cover insp-cover--ph" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="background:${pcolor}">${esc(pname.slice(0, 1))}</a>`;
+        : `<a class="insp-cover insp-cover--fb" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="background:${fb.grad}"><span class="fb-ico">${fb.icon}</span><span class="fb-plat">${esc(fb.pname)}</span></a>`;
       const linkHtml = x.link ? `<a class="chip link insp-open" href="${esc(x.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">打开链接 ↗</a>` : '';
       const shortSum = (x.summary || '').slice(0, 64);
       const aiDir = x.direction ? renderDirection(x) : '';
@@ -940,6 +1161,7 @@
           <div class="insp-tags">${renderSeriesTag(seriesOf(x))}</div>
           <div class="insp-acts">
             <button class="mini ghost" data-act="toggle-insp-detail" data-id="${x.id}">${detailBtn}</button>
+            <button class="mini ghost" data-act="refetch-cover" data-id="${x.id}">刷新封面</button>
             <button class="mini" data-act="promote-insp" data-id="${x.id}">收录</button>
             <button class="mini" data-act="edit-content" data-id="${x.id}">编辑</button>
             <button class="mini ghost" data-act="del-content" data-id="${x.id}">删除</button>
@@ -1209,7 +1431,9 @@
           suggestedTopic: sd.topic,
           series: dir.series,
           linkType: isWeixin ? 'weixin' : 'search',
-          link: url },
+          contentUrl: '',                 // 具体视频/新闻 URL：自动种子无，仅手动粘贴真实链接才有
+          fallbackUrl: url,               // 热榜/搜索备用链接（自动种子仅有这一级）
+          link: url },                    // 兼容旧字段 = fallbackUrl
         sd, { col: sd.col || sg.col, analysis: analysis, combine: sd.angle || (dir && dir.extend) || '可结合你的系列切入' }
       ));
       added++;
@@ -1670,6 +1894,13 @@
 
       case 'add-task': { const inp = el.previousElementSibling; const v = inp.value.trim(); if (v) { addTask(type, v); inp.value = ''; } break; }
       case 'add-cal-task': { const inp = $('#qa-cal'); const v = inp ? inp.value.trim() : ''; if (v) addTask('todo', v, App.selDay); break; }
+
+      /* ---- 首页（个人工作驾驶舱）---- */
+      case 'home-add-task': homeAddTask(); break;
+      case 'home-add-temp': homeAddTemp(); break;
+      case 'home-add-date': homeAddDate(); break;
+      case 'home-clear-task': { const inp = $('#home-task-title'); if (inp) inp.value = ''; const sel = $('#home-task-cat'); if (sel) sel.value = 'edu'; break; }
+      case 'home-quote': App.homeQuoteShift = (App.homeQuoteShift || 0) + 1; render(); break;
       case 'toggle-task': { const t = find(s.tasks, id); if (t) { t.done = !t.done; if (t.done) t.doneAt = today(); save(); render(); } break; }
       case 'edit-task': editTask(id); break;
       case 'del-task': if (trashItem('tasks', id, 'task')) { save(); render(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -1700,6 +1931,7 @@
       case 'add-insp-note': { const n = $('#qa-note'); if (n) { addInspNote(n.value); n.value = ''; } break; }
       case 'toggle-insp-detail': { App.folds['inspd-' + id] = !App.folds['inspd-' + id]; render(); break; }
       case 'promote-insp': promoteInsp(id); break;
+      case 'refetch-cover': refetchCover(id); break;
       case 'add-content': editContent(null); break;
       case 'edit-content': editContent(id); break;
       case 'del-content': if (trashItem('content', id, 'content')) { save(); renderContent(); toast('已移入回收站，可以随时恢复 🌿'); } break;
@@ -1827,8 +2059,11 @@
       const _host = (() => { try { return new URL(fd.link || '').hostname; } catch (e) { return ''; } })();
       const _isWx = /(weixin|channels)/.test(_host);
       const _linkType = fd.link ? (_isWx ? 'weixin' : 'real') : (h.linkType || 'search');
-      if (id) { Object.assign(h, fd); h.series = fd.series || h.series; h.linkType = _linkType; }
-      else { App.state.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false, linkType: _linkType }, fd)); }
+      // 粘贴的真实链接 = 具体原内容（contentUrl）；未粘贴则保留已有 fallbackUrl（热榜/搜索备用）
+      const _contentUrl = fd.link ? fd.link : (h.contentUrl || '');
+      const _fallbackUrl = fd.link ? '' : (h.fallbackUrl || h.link || '');
+      if (id) { Object.assign(h, fd); h.series = fd.series || h.series; h.linkType = _linkType; h.contentUrl = _contentUrl; h.fallbackUrl = _fallbackUrl; }
+      else { App.state.hotspots.push(Object.assign({ id: uid(), date: today(), collected: false, linkType: _linkType, contentUrl: _contentUrl, fallbackUrl: _fallbackUrl }, fd)); }
       save(); renderContent();
     });
   }
@@ -2016,7 +2251,7 @@
     const map = {
       today: renderToday, month: renderMonth, growth: renderGrowth, inspiration: renderInspiration,
       content: renderContent, crm: renderCRM, ecom: renderEcom, self: renderSelf,
-      aiprofile: renderAIProfile, trash: renderTrash,
+      aiprofile: renderAIProfile, trash: renderTrash, home: renderHome,
     };
     (map[App.current] || renderToday)();
     renderNav(); // 顶部数字气泡刷新

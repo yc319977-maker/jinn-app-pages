@@ -211,6 +211,8 @@ header.topbar {
 .mov.done .mn { color: #5C8A57; }
 .mov.todo .mn { color: var(--terra-d); }
 .mov.rate .mn { color: var(--gold); }
+.mov.clickable { cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.mov.clickable:hover { box-shadow: 0 5px 14px rgba(143,185,138,.30); transform: translateY(-1px); }
 
 /* 折叠标题（需要继续推进 / 灵感等） */
 .fold-h { cursor: pointer; user-select: none; }
@@ -601,18 +603,21 @@ header.topbar {
 .hh-pill .n { display: block; font-size: 18px; font-weight: 800; color: var(--terra-d); line-height: 1.1; }
 .hh-pill .l { font-size: 11px; color: var(--ink-soft); }
 .hh-qbtn { margin-top: 9px; }
-
-/* —— 图片参考占位（用户预留，之后替换为真实图片）——
-   替换方式：把 .home-img-ph 这个 div 换成 <img src="你的图" class="home-img"> 即可 */
-.home-img-ph {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
-  border: 2px dashed var(--line); border-radius: 16px; padding: 16px; margin-bottom: 16px;
-  background: repeating-linear-gradient(45deg, #fff, #fff 10px, #FBF7F0 10px, #FBF7F0 20px);
-  color: var(--ink-soft);
+/* 首页顶部行：问候左、重要日期 chip 右 */
+.hh-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.hh-date-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  background: #EAF1F7; color: #2F6593; border: 1px solid #D7E6F0;
+  border-radius: 20px; padding: 6px 11px; font-size: 12px; cursor: pointer;
+  box-shadow: 0 3px 9px rgba(157,184,201,.18); max-width: 52%;
 }
-.home-img-ph .hip-ico { font-size: 24px; }
-.home-img-ph .hip-t { font-size: 13.5px; font-weight: 700; color: var(--ink); }
-.home-img-ph .hip-s { font-size: 11.5px; }
+.hh-date-chip .hdc-ico { font-size: 13px; }
+.hh-date-chip .hdc-k { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 7em; }
+.hh-date-chip .hdc-d { color: #6B8AA0; white-space: nowrap; }
+.hh-date-chip.muted { background: var(--bg-soft); color: var(--ink-soft); border-color: var(--line); box-shadow: none; }
+.hh-date-chip:active { transform: translateY(1px); }
+/* 今日进度子标题 */
+.sub-h { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 12px 0 6px; }
 
 /* —— 快速添加任务：提示 —— */
 .hadd-hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 9px; }
@@ -655,5 +660,4 @@ header.topbar {
   .hh-pill .n { font-size: 17px; }
   .hdc-badge { width: 50px; height: 50px; }
   .hdc-badge .hdc-d { font-size: 19px; }
-  .home-img-ph { padding: 14px 10px; }
 }

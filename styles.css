@@ -518,3 +518,108 @@ header.topbar {
   .home-stat .n { font-size: 21px; }
   .home-stat .l { font-size: 11px; }
 }
+
+/* ============================================================
+   首页视觉美化（轮次 Q）：统一视觉系统 + 模块层级
+   原则：好看 > 花哨；移动端优先；克制的完成反馈；装饰不抢内容
+   ============================================================ */
+/* 模块头：图标胶囊 + 标题 + 主题徽章；每个模块一种主题色，形成层级又不花哨 */
+.hmod { position: relative; }
+.card .hmod-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.card .hmod-head h3 { margin: 0; font-size: 15.5px; }
+.hmod-ic {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 10px;
+  font-size: 16px; background: var(--accent-soft); color: var(--accent); flex-shrink: 0;
+}
+.hbadge {
+  margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent);
+  background: var(--accent-soft); padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+}
+/* 模块主题色（同一套视觉语言下的层级区分） */
+.hmod-add   { --accent: var(--terra);  --accent-soft: #FDEFE0; }
+.hmod-temp  { --accent: var(--gold);   --accent-soft: #FBF1D8; }
+.hmod-prog  { --accent: var(--green);  --accent-soft: #E7F2E2; }
+.hmod-date  { --accent: var(--blue);   --accent-soft: #E7EFF4; }
+.hmod-shoot { --accent: #7A6CA8;       --accent-soft: #ECE8F5; }
+.hmod-trace { --accent: var(--green);  --accent-soft: #E7F2E2; }
+
+/* —— 顶部 hero：问候 + 金句 + 今日概览 —— */
+.home-hero {
+  background: linear-gradient(135deg, #FFF6E9, #EEF4E6);
+  border: 1px solid #F4E6CF; border-radius: 22px; padding: 18px 18px 16px;
+  box-shadow: var(--shadow); margin-bottom: 16px; position: relative; overflow: hidden;
+}
+.home-hero::after {
+  content: ''; position: absolute; right: -34px; top: -34px; width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(232,168,124,.18), transparent 70%); pointer-events: none;
+}
+.hh-greet { font-size: 17px; font-weight: 800; display: flex; align-items: baseline; gap: 10px; }
+.hh-date { font-size: 12.5px; color: var(--ink-soft); font-weight: 500; }
+.hh-quote { position: relative; margin-top: 10px; padding-left: 6px; }
+.hh-qmark { position: absolute; left: -4px; top: -12px; font-size: 36px; line-height: 1; color: rgba(232,168,124,.28); font-family: Georgia, "Times New Roman", serif; }
+.hh-qt { font-size: 16px; font-weight: 600; line-height: 1.7; }
+.hh-qe { font-size: 12.5px; color: var(--ink-soft); font-style: italic; margin-top: 4px; line-height: 1.5; }
+.hh-stats { display: flex; gap: 8px; margin-top: 13px; }
+.hh-pill {
+  flex: 1; text-align: center; background: rgba(255,255,255,.62); border: 1px solid #F0E4D2;
+  border-radius: 12px; padding: 8px 4px;
+}
+.hh-pill .n { display: block; font-size: 18px; font-weight: 800; color: var(--terra-d); line-height: 1.1; }
+.hh-pill .l { font-size: 11px; color: var(--ink-soft); }
+.hh-qbtn { margin-top: 9px; }
+
+/* —— 图片参考占位（用户预留，之后替换为真实图片）——
+   替换方式：把 .home-img-ph 这个 div 换成 <img src="你的图" class="home-img"> 即可 */
+.home-img-ph {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  border: 2px dashed var(--line); border-radius: 16px; padding: 16px; margin-bottom: 16px;
+  background: repeating-linear-gradient(45deg, #fff, #fff 10px, #FBF7F0 10px, #FBF7F0 20px);
+  color: var(--ink-soft);
+}
+.home-img-ph .hip-ico { font-size: 24px; }
+.home-img-ph .hip-t { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.home-img-ph .hip-s { font-size: 11.5px; }
+
+/* —— 快速添加任务：提示 —— */
+.hadd-hint { font-size: 11.5px; color: var(--ink-soft); margin-top: 9px; }
+
+/* —— 临时记录：便签纸感 —— */
+.hmod-temp .home-temp-trigger {
+  display: flex; align-items: center; gap: 10px; min-height: 56px;
+  background: linear-gradient(180deg, #FFFDF3, #FBF5E0);
+  border: 1px solid #EFE6C8; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 4px 12px rgba(217,178,106,.14); font-size: 14px; line-height: 1.5;
+}
+.hmod-temp .home-temp-trigger .ht-pin { font-size: 15px; flex-shrink: 0; }
+.hmod-temp .home-temp-trigger .ht-line { color: var(--ink-soft); }
+.hmod-temp .home-temp-trigger:active { background: #F7EFD6; }
+
+/* —— 今日份进步：打卡感卡片 + 克制完成反馈 —— */
+.hmod-prog { background: linear-gradient(180deg, #FFFFFF, #F7FBF4); }
+.home-check.on { animation: homePop .26s ease; }
+.home-check.on .box { box-shadow: 0 0 0 4px rgba(52,179,107,.16); }
+@keyframes homePop { 0% { transform: scale(.97); } 55% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+/* —— 重要日期：日历徽章 —— */
+.home-date-card { display: flex; align-items: center; gap: 14px; background: var(--bg-soft); border-radius: 14px; padding: 12px 14px; }
+.hdc-badge {
+  width: 58px; height: 58px; border-radius: 14px; flex-shrink: 0;
+  background: linear-gradient(135deg, #EAF1F7, #DCE9F1); color: var(--blue);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(157,184,201,.22);
+}
+.hdc-badge .hdc-m { font-size: 11px; font-weight: 700; }
+.hdc-badge .hdc-d { font-size: 22px; font-weight: 800; line-height: 1; }
+.hdc-info { flex: 1; min-width: 0; }
+.hdc-t { font-size: 15px; font-weight: 700; word-break: break-word; }
+.hdc-s { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+
+@media (max-width: 540px) {
+  .home-hero { padding: 16px 14px 14px; }
+  .hh-greet { font-size: 16px; }
+  .hh-qt { font-size: 15px; }
+  .hh-pill .n { font-size: 17px; }
+  .hdc-badge { width: 50px; height: 50px; }
+  .hdc-badge .hdc-d { font-size: 19px; }
+  .home-img-ph { padding: 14px 10px; }
+}

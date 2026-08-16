@@ -58,6 +58,107 @@
     }
   }
 
+  // —— 一次性安全迁移：把 jinn 自己记录的历史任务导入现有 tasks 数据源 ——
+  // 数据安全铁律：① 幂等——标记 __mig.historicalTasksV1，重复运行绝不重复创建；
+  //         ② 去重——按 日期+标题(归一)+完成状态 比对现有 tasks，疑似重复跳过并计数（不自动合并、不删现有）；
+  //         ③ 仅追加——不删/不改/不重置任何已有任务，保留原始日期，未完成自动进入"需要继续推进"；
+  //         ④ 统一数据源——全部写入 App.state.tasks，与月视图/每日进步/任务列表共用同一对象（不建第二套）。
+  function migrateHistoricalTasks() {
+    const s = App.state;
+    if (!Array.isArray(s.tasks)) s.tasks = [];
+    s.__mig = s.__mig || {};
+    if (s.__mig.historicalTasksV1) return;   // 已迁移过 → 直接跳过，防重复
+    // 清单：[日期, 标题, 是否完成, 区域]；日期 '' = 无日期灵感（不伪造日期）
+    const HIST = [
+      ['2026-06-26','找林林签公会',true,'content'],
+      ['2026-06-26','发官号视频',true,'content'],
+      ['2026-06-26','剪自己开学典礼视频',true,'content'],
+      ['2026-06-26','7月团播安排',true,'content'],
+      ['2026-06-26','教阿姨教育直播',false,'edu'],
+      ['2026-06-26','团播缺的东西',true,'content'],
+      ['2026-06-26','新人下来签规则单',true,'content'],
+      ['2026-06-26','和白宇确认阿妮达 妆容考核是否通过',true,''],
+      ['2026-06-26','教育《百问》、SOP整理',true,'edu'],
+      ['2026-06-26','小红书解封',true,''],
+      ['2026-06-26','看玉姐发的小红书',false,''],
+      ['2026-06-28','剪美妆视频（向下看箭头、胶水不要挤太多文字提醒）',true,'content'],
+      ['2026-06-28','发官号视频',true,'content'],
+      ['2026-06-28','转移电脑文件',true,''],
+      ['2026-06-28','群内发放视频让他们发',true,'content'],
+      ['2026-06-29','拍学姐视频（ai选题）',true,'content'],
+      ['2026-06-30','让翻译妆教视频',true,'content'],
+      ['2026-07-01','整理桌面文件',false,''],
+      ['2026-07-01','把选题：留学清单整理',true,'edu'],
+      ['2026-07-01','曼皇渠道ppt 增加校园风采',false,'edu'],
+      ['2026-07-01','曼皇学校教育直播 理思路',false,'edu'],
+      ['2026-07-01','录自己学历查询视频【一周后】',false,'content'],
+      ['2026-07-01','电商工作交接 内容分工',true,'ecom'],
+      ['2026-07-01','安排主播带货直播',true,'ecom'],
+      ['2026-07-01','玉姐给学姐号发的视频进行仿拍',true,'content'],
+      ['2026-07-01','买散热器',false,''],
+      ['2026-07-01','网页进度（给虾哥周老师他们发教程）',false,'edu'],
+      ['2026-07-01','各个群里周老师视频 发消息',true,'edu'],
+      ['2026-07-01','安排切片发送',true,'content'],
+      ['2026-07-02','老乡的朋友学费问题',true,'edu'],
+      ['2026-07-02','教育费用整合！',true,'edu'],
+      ['2026-07-02','备课',true,'edu'],
+      ['2026-07-03','妆教视频配音、音效等',true,'content'],
+      ['2026-07-03','家长会 公司的翻译把上次玉姐安排他们问的那个问题的那一段截取出来，然后把它剪成一个视频',true,'edu'],
+      ['2026-07-03','上次是让雨宁问的，找一下宇宁问的那个片段',true,'edu'],
+      ['2026-07-03','发官号视频',true,'content'],
+      ['2026-07-04','确认电商主播上班时间，让玉娇管考勤',true,'ecom'],
+      ['2026-07-04','发学姐号视频',true,'content'],
+      ['2026-07-04','拍摄：一个女生独自去曼谷',false,'content'],
+      ['2026-07-04','找nun和玉娇确认他们的休息时段',true,'ecom'],
+      ['2026-07-08','自己小红书发视频',true,'content'],
+      ['2026-07-08','微信项目介绍话术整理',false,'biz'],
+      ['2026-07-08','玉姐采访视频内容整理',true,'content'],
+      ['2026-07-09','看AI课程的回放',false,'edu'],
+      ['2026-07-09','取消gpt会员',true,''],
+      ['2026-07-12','做NM公司的资料（介绍资料）',false,'biz'],
+      ['2026-07-18','拍一人去曼谷视频',true,'content'],
+      ['2026-07-18','整理目前所有家长高频问题、问题回答的话术等',false,'edu'],
+      ['2026-07-18','问成人留学',true,'edu'],
+      ['','ec无界',false,''],
+      ['','创业机会',false,''],
+      ['','回馈给学弟学妹',false,''],
+      ['','马来留学',false,''],
+      ['','回馈给泰国',false,''],
+      ['2026-08-04','TAP',true,''],
+      ['2026-08-04','pr群任务',true,'biz'],
+      ['2026-08-04','杨老师资料整合并上传网盘',true,'edu'],
+      ['2026-08-07','学校Pr学生实操落地的前置工作',false,'edu'],
+      ['2026-08-07','个人工作台',true,'grow'],
+      ['2026-08-15','美瞳',true,''],
+      ['2026-08-15','工作台优化',false,'grow'],
+      ['2026-08-15','做作业',false,'edu'],
+      ['2026-08-15','电钻达人对接',true,'ecom'],
+      ['2026-08-15','备经济学课',false,'edu'],
+      ['2026-08-16','找阿妮达谈话 罚300',false,''],
+      ['2026-08-16','上传TK视频',false,'content'],
+    ];
+    const norm = (t) => (t || '').trim().toLowerCase();
+    const seen = new Set(s.tasks.filter((t) => t && t.date != null).map((t) => (t.date || '') + '|' + norm(t.title) + '|' + (t.done ? 1 : 0)));
+    let added = 0, skipped = 0;
+    HIST.forEach((it) => {
+      const date = it[0], title = (it[1] || '').trim(), done = !!it[2], cat = it[3] || '';
+      if (!title) return;
+      const key = (date || '') + '|' + norm(title) + '|' + (done ? 1 : 0);
+      if (seen.has(key)) { skipped++; return; }   // 疑似重复：保留现有，不自动合并/不删
+      s.tasks.push({
+        id: uid(), type: 'todo', title, cat,
+        date: date || '',                         // 无日期灵感保留空 date，不伪造日期
+        done, doneAt: done ? (date || '') : '',
+        canceled: false, order: Date.now(),
+        note: date ? '' : '灵感·选题（无日期，保留不造日期）',
+      });
+      seen.add(key); added++;
+    });
+    s.__mig.historicalTasksV1 = true;
+    App._migReport = { added, skipped, total: HIST.length };
+    if (added) save();
+  }
+
   let saveTimer = null;
   function save() {
     clearTimeout(saveTimer);
@@ -642,6 +743,11 @@
     const s = App.state;
     const td = today();
 
+    // —— 今日任务概览（首屏信息密度）——
+    const todayTasks = s.tasks.filter((t) => !t.canceled && t.date === td);
+    const todayDone = todayTasks.filter((t) => t.done).length;
+    const todayTodo = todayTasks.length - todayDone;
+
     // —— 本月财富打卡天数（真实收入记录，不参与习惯打卡）——
     const incDays = new Set(s.income.filter((i) => (i.date || '').slice(0, 7) === td.slice(0, 7)).map((i) => i.date));
 
@@ -653,57 +759,69 @@
     const cusNext = (s.dates || []).filter((d) => d.date >= td).map((d) => ({ title: d.title, date: d.date }));
     const allNext = holNext.concat(cusNext).sort((a, b) => a.date.localeCompare(b.date));
     const nx = allNext[0] || null;
-    const nextLabel = nx ? (nx.date === td ? nx.title + ' · 就是今天' : nx.title + ' · 还有 ' + Math.round((new Date(nx.date).getTime() - new Date(td).getTime()) / 86400000) + ' 天') : '暂无，去加一个吧';
+    const days = nx ? Math.round((new Date(nx.date).getTime() - new Date(td).getTime()) / 86400000) : 0;
 
     // 今日金句（中英文，按日确定切换）
     const q = homeQuote();
 
-    let html = `
-    <div class="home-topbar">
-      <span>${greet()}</span><span class="dot">·</span><span>${td}</span>
+    // 今日份进步：配置驱动的习惯打卡
+    const habits = (s.habits || []).filter((h) => h.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const doneHabits = habits.filter((h) => isHabitDoneToday(h)).length;
+
+    let html = '';
+
+    // —— 顶部区域：hero（问候 + 金句 + 今日概览）——
+    html += `<div class="home-hero">
+      <div class="hh-greet">${greet()}<span class="hh-date">${td}</span></div>
+      <div class="hh-quote">
+        <span class="hh-qmark">“</span>
+        <div class="hh-qt">${esc(q.zh)}</div>
+        <div class="hh-qe">${esc(q.en)}</div>
+      </div>
+      <div class="hh-stats">
+        <div class="hh-pill"><span class="n">${todayTodo}</span><span class="l">待办</span></div>
+        <div class="hh-pill"><span class="n">${todayDone}</span><span class="l">已完成</span></div>
+        <div class="hh-pill"><span class="n">${doneHabits}/${habits.length || 0}</span><span class="l">打卡</span></div>
+      </div>
+      <button class="mini ghost hh-qbtn" data-act="home-quote">换一句 ✦</button>
     </div>`;
 
-    // —— 顶部：今日金句（中文 + 英文），占据原 hero 位置，去掉「慢慢来」废话 ——
-    html += `<div class="card home-quote2">
-      <div class="hq-t">${esc(q.zh)}</div>
-      <div class="hq-en">${esc(q.en)}</div>
-      <button class="mini ghost" data-act="home-quote" style="margin-top:6px">换一句</button>
-    </div>`;
-
-    // （「今日份进步」模块已移至「临时记录」之后，见下方）
-
-    // —— 下一个重要日子：紧凑一行（去掉「距离…还有」长标签）——
-    const days = nx ? Math.round((new Date(nx.date).getTime() - new Date(td).getTime()) / 86400000) : 0;
-    const nextCompact = nx ? (nx.date === td ? `<b>${esc(nx.title)}</b> · 今天` : `<b>${esc(nx.title)}</b> · ${days} 天后`) : '暂无重要日子';
-    html += `<div class="card home-next2">
-      <span class="hn-tag">下一个</span> ${nextCompact}
-      <button class="hn-plus" data-act="home-date-manage" aria-label="管理重要日期">＋</button>
+    // —— 设计参考图位（用户预留，之后手动替换为图片）——
+    html += `<!-- 设计参考图位：这里插入我的界面参考图片 -->
+    <div class="home-img-ph" data-note="参考图位">
+      <span class="hip-ico">🖼️</span>
+      <span class="hip-t">这里插入我的界面参考图片</span>
+      <span class="hip-s">在此位置放你的界面参考图，替换这个占位块即可</span>
     </div>`;
 
     // —— 快速添加任务 ——
-    html += `<div class="card"><h3>➕ 快速添加任务 <span class="tag">写任务名 + 选区域</span></h3>
+    html += `<div class="card hmod hmod-add">
+      <div class="hmod-head"><span class="hmod-ic">📝</span><h3>快速添加任务</h3><span class="hbadge">写任务名 + 选区域</span></div>
       <div class="home-add">
         <input id="home-task-title" placeholder="今天要做的任务…">
-        <select id="home-task-cat" aria-label="区域">
-          <option value="edu">教育</option>
-          <option value="content">内容</option>
-          <option value="ecom">电商</option>
-          <option value="biz">商业</option>
-          <option value="grow">成长</option>
-        </select>
         <div class="home-add-acts">
-          <button class="btn sm" data-act="home-add-task">保存</button>
+          <select id="home-task-cat" aria-label="区域">
+            <option value="edu">教育</option>
+            <option value="content">内容</option>
+            <option value="ecom">电商</option>
+            <option value="biz">商业</option>
+            <option value="grow">成长</option>
+          </select>
+          <button class="btn sm" data-act="home-add-task">＋ 添加</button>
           <button class="btn ghost sm" data-act="home-clear-task">清空</button>
         </div>
-      </div></div>`;
+      </div>
+      <div class="hadd-hint">回车也能保存 · 自动进入「今日待办」</div>
+    </div>`;
 
-    // —— 临时记录：点击整块即打开大面积备忘录编辑（窄框本身带 data-act 触发）——
-    html += `<div class="card"><h3>⚡ 临时记录 <span class="tag">点一下写</span></h3>
-      <div class="home-temp-trigger" data-act="home-add-temp-modal">记下现在想到的事情……</div>
-      <div class="tiny muted">点上方区域打开大面积编辑器，取消不保存</div></div>`;
+    // —— 临时记录：便签样式 ——
+    html += `<div class="card hmod hmod-temp">
+      <div class="hmod-head"><span class="hmod-ic">📌</span><h3>临时记录</h3><span class="hbadge">便签 · 点一下写</span></div>
+      <div class="home-temp-trigger" data-act="home-add-temp-modal"><span class="ht-pin">📌</span><span class="ht-line">记下现在想到的事情……</span></div>
+      <div class="tiny muted">点上方区域打开大面积编辑器，取消不保存</div>
+    </div>`;
 
-    // —— 今日份进步：配置驱动的习惯打卡（兼容层：通过 kind 复用 english/health；自定义用 habitLogs）——
-    const habits = (s.habits || []).filter((h) => h.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
+    // —— 今日份进步：打卡感卡片 ——
     const habitBoxes = habits.map((h) => {
       const done = isHabitDoneToday(h);
       const md = habitMonthDays(h);
@@ -714,15 +832,29 @@
         <span class="md">本月 ${md} 天</span>
         ${done ? '<button class="mini ghost" data-act="home-edit-note" data-id="' + h.id + '" style="margin-left:auto">＋ 备注</button>' : ''}
       </div>`;
-    }).join('') || '<div class="muted tiny">还没有习惯，点右上角「管理」添加。</div>';
-    html += `<div class="card home-top">
-      <h3>🌟 今日份进步 <span class="tag">点击方框 = 打卡 / 取消</span><button class="hbtn" data-act="home-habit-manage" style="margin-left:auto">⚙️ 管理</button></h3>
+    }).join('') || '<div class="muted tiny">还没有习惯，点右下角「管理」添加。</div>';
+    html += `<div class="card hmod hmod-prog">
+      <div class="hmod-head"><span class="hmod-ic">🌟</span><h3>今日份进步</h3><span class="hbadge">打卡 ${doneHabits}/${habits.length || 0}</span><button class="hbtn" data-act="home-habit-manage">⚙ 管理</button></div>
       <div class="home-checks">${habitBoxes}</div>
       <div class="home-income">💰 财富 · 本月 ${incDays.size} 天（真实收入记录，不参与打卡）</div>
     </div>`;
 
+    // —— 重要日期：日历徽章 ——
+    html += `<div class="card hmod hmod-date">
+      <div class="hmod-head"><span class="hmod-ic">📅</span><h3>重要日期</h3><button class="hn-plus" data-act="home-date-manage" aria-label="管理重要日期">＋</button></div>`;
+    if (nx) {
+      html += `<div class="home-date-card">
+        <div class="hdc-badge"><span class="hdc-m">${nx.date.slice(5, 7)}月</span><span class="hdc-d">${nx.date.slice(8, 10)}</span></div>
+        <div class="hdc-info"><div class="hdc-t">${esc(nx.title)}</div><div class="hdc-s">${nx.date === td ? '就是今天 🎉' : '还有 ' + days + ' 天'}</div></div>
+      </div>`;
+    } else {
+      html += `<div class="empty"><span class="em">📅</span>还没有重要日子，点 ＋ 加一个。</div>`;
+    }
+    html += `</div>`;
+
     // —— 拍摄计划 ——
-    html += `<div class="card"><h3>🎬 拍摄计划 <span class="tag">内容宇宙 · 待制作 ${shoot.length} 条</span></h3>`;
+    html += `<div class="card hmod hmod-shoot">
+      <div class="hmod-head"><span class="hmod-ic">🎬</span><h3>拍摄计划</h3><span class="hbadge">待制作 ${shoot.length}</span></div>`;
     if (shoot.length) {
       html += `<div class="home-list">` + shoot.slice(0, 6).map((c) => {
         const se = seriesOf(c);
@@ -733,11 +865,12 @@
     }
     html += `</div>`;
 
-    // —— 最近成长痕迹（跳转成长地图）——
+    // —— 最近成长痕迹（次要）——
     const trace = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')))
       .slice(0, 6);
-    html += `<div class="card"><h3>📚 最近成长痕迹 <span class="tag">已完成事项</span></h3>`;
+    html += `<div class="card hmod hmod-trace">
+      <div class="hmod-head"><span class="hmod-ic">📚</span><h3>最近成长痕迹</h3></div>`;
     if (trace.length) {
       html += `<div class="home-list">` + trace.map((t) =>
         `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
@@ -812,7 +945,6 @@
     if (!habit) return;
     const td = today();
     if (isHabitDoneToday(habit)) {
-      if (!window.confirm('取消今日「' + habit.name + '」打卡？')) return;
       if (habit.kind === 'english' || habit.kind === 'health') {
         const arr = habitSource(habit);
         for (let i = arr.length - 1; i >= 0; i--) {
@@ -2556,6 +2688,7 @@
     }
     App.state = await DB.loadAll();
     ensure();
+    migrateHistoricalTasks();   // 一次性安全导入历史任务（幂等：重复运行不重复创建）
     // 恢复上次浏览位置（刷新不跳回首页）
     try {
       const v = JSON.parse(localStorage.getItem('sb_view') || '{}');

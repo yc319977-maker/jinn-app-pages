@@ -85,7 +85,14 @@
     const s = App.state;
     if (!Array.isArray(s.tasks)) s.tasks = [];
     s.__mig = s.__mig || {};
-    if (s.__mig.historicalTasksV1) return;   // 已迁移过 → 直接跳过，防重复
+    // 【V2.1 P0-1】幂等标记持久化到 localStorage —— 因 db.js 的 saveLocal 不写 __mig，
+    // 只信内存标记会在浏览器重启后失效导致 migrate 重跑；改用专用 sb_mig_* key 兜底
+    let migDoneByLs = false;
+    try { migDoneByLs = localStorage.getItem('sb_mig_historicalTasksV1') === '1'; } catch (_) {}
+    if (s.__mig.historicalTasksV1 || migDoneByLs) {
+      s.__mig.historicalTasksV1 = true;   // 同步内存标记，避免下次又走 fs 检查
+      return;                              // 已迁移过 → 直接跳过，防重复
+    }
     // 清单：[日期, 标题, 是否完成, 区域]；日期 '' = 无日期灵感（不伪造日期）
     const HIST = [
       ['2026-06-26','找林林签公会',true,'content'],
@@ -157,6 +164,12 @@
     ];
     const norm = (t) => (t || '').trim().toLowerCase();
     const seen = new Set(s.tasks.filter((t) => t && t.date != null).map((t) => (t.date || '') + '|' + norm(t.title) + '|' + (t.done ? 1 : 0)));
+    // 【V2.1 P0-1】把回收站里原实体是 tasks 的条目也算 seen —— 用户已删除的 HIST 不再被重建
+    //   数据安全铁律：绝不触碰 trash 中的 data，仅读取 title/date/done 用于去重 key
+    (s.trash || []).filter((tr) => tr && tr.origEntity === 'tasks').forEach((tr) => {
+      const d = tr.data || {};
+      seen.add((d.date || '') + '|' + norm(d.title) + '|' + (d.done ? 1 : 0));
+    });
     let added = 0, skipped = 0;
     HIST.forEach((it) => {
       const date = it[0], title = (it[1] || '').trim(), done = !!it[2], cat = it[3] || '';
@@ -174,6 +187,8 @@
     });
     s.__mig.historicalTasksV1 = true;
     App._migReport = { added, skipped, total: HIST.length };
+    // 【V2.1 P0-1】持久化幂等标记到 localStorage，确保浏览器重启后不会重跑 migrate
+    try { localStorage.setItem('sb_mig_historicalTasksV1', '1'); } catch (_) {}
     if (added) save();
   }
 
@@ -602,10 +617,20 @@
       $('#view').innerHTML = h; return;
     }
     const tasks = s.tasks.filter((t) => !t.canceled);
+    // 【V2.1 P1-2】稳定排序：保持原始相对顺序（按 s.tasks 数组 push 顺序 = 创建时间升序）
+    //   这样 P1-2 的"二级按创建时间"由 s.tasks.push 顺序天然保证（uid+order 共同稳定）
+    //   主排序由 date 倒序控制（详见下方 pending 排序）
     const core = tasks.filter((t) => t.type === 'core' && t.date === td && !t.done);
     const todo = tasks.filter((t) => t.type === 'todo' && t.date === td && !t.done);
     const temp = tasks.filter((t) => t.type === 'temp' && t.date === td && !t.done);
-    const pending = tasks.filter((t) => t.date < td && !t.done);
+    // 【V2.1 P1-2】往期任务排序：日期倒序（昨天→前天→更早），二级按创建时间升序
+    //   date 倒序天然形成"最近一天在前"的视觉；同日内 s.tasks 数组顺序=创建时间升序（push 顺序）
+    const pending = tasks.filter((t) => t.date && t.date < td && !t.done)
+      .slice()
+      .sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);   // 日期降序：今天→昨天→前天→更早
+        return (a.order || 0) - (b.order || 0);                       // 二级：创建时间升序
+      });
     const doneToday = tasks.filter((t) => t.done && (t.doneAt || t.date) === td);
 
     // —— 每日进步：顶部轻量区 + 下方四个独立模块（同源 tasks；顶部只轻量显示「今天完成 X 条」可点击，不展示完成任务列表）——
@@ -805,6 +830,12 @@
 
     let html = '';
 
+    // 【V2.1 P1-6】首页顶部全局搜索：纯内存模糊匹配，结果点击直达，零写入
+    html += `<div class="home-search-wrap">
+      <input id="home-search" class="home-search" placeholder="🔍 搜任务 / 选题 / 成长方向 / 复盘 / 决策…" autocomplete="off" spellcheck="false">
+      <div id="home-search-panel" class="hsr-panel" style="display:none"></div>
+    </div>`;
+
     // —— 重要日期紧凑 chip（顶部右侧；点击打开详情）——
     const dateChip = nx
       ? `<button class="hh-date-chip" data-act="home-date-manage" title="${esc(nx.title)} · 还有 ${days} 天">
@@ -895,14 +926,14 @@
       html += `</div>`;
     }
 
-    // —— 最近成长痕迹（折叠式；同源 tasks；展开显示全部，不做 6 条上限）——
+    // —— 成长痕迹（折叠式；同源 tasks；首页专注最新 6 条摘要；展开显示全部）——
     const traceAll = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')));
     const tracePreview = traceAll.slice(0, 6); // 仅折叠态摘要用；展开渲染全部 traceAll
     const traceOpen = App.folds['trace'];
     html += `<div class="card hmod hmod-trace">
       <div class="hmod-head fold-h" data-act="toggle-fold" data-id="trace">
-        <span class="hmod-ic">📚</span><h3>最近成长痕迹</h3>
+        <span class="hmod-ic">📚</span><h3>成长痕迹</h3>
         <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span><span class="hbadge">${traceAll.length} 条</span>
       </div>`;
     // 「看全部」常驻：折叠态也可点；点击展开成长痕迹并进入成长地图（显示全部真实完成任务）
@@ -928,15 +959,70 @@
   function bindHomeQuickAdd() {
     const t = $('#home-task-title');
     if (t) t.onkeydown = (e) => { if (e.key === 'Enter') homeAddTask(); };
+    // 【V2.1 P1-6】首页搜索：纯内存模糊匹配，结果跳到对应模块；零写入 state
+    const s = $('#home-search');
+    if (s) {
+      s.oninput = (e) => homeSearch(e.target.value);
+      s.onkeydown = (e) => {
+        const panel = $('#home-search-panel');
+        if (!panel) return;
+        if (e.key === 'Escape') { panel.style.display = 'none'; s.value = ''; }
+      };
+    }
+  }
+  // 【V2.1 P1-6】首页关键词模糊搜索：仅读 s.tasks/s.content/s.growth/s.reviews/s.decisions 现有数据
+  //   严格只读，绝不写入任何字段；点击结果仅触发 navigate()；20s 内连续打字只触发一次渲染（rAF 节流）
+  function homeSearchIcon(mod) {
+    return ({ today: '📝', content: '🎬', growth: '🧭', rd: '🪞' })[mod] || '🔎';
+  }
+  function homeSearchLabel(mod, text) {
+    return ({ today: '任务', content: '选题', growth: '成长', rd: '复盘/决策' })[mod] + ' · ' + text;
+  }
+  let _hsFrame = 0;
+  function homeSearch(q) {
+    const panel = $('#home-search-panel'); if (!panel) return;
+    if (!q.trim()) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    if (_hsFrame) return;
+    _hsFrame = requestAnimationFrame(() => { _hsFrame = 0; homeSearchRender(q); });
+  }
+  function homeSearchRender(q) {
+    const panel = $('#home-search-panel'); if (!panel) return;
+    const ql = q.trim().toLowerCase();
+    if (!ql) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    const s = App.state;
+    const cut = (t, n) => (t || '').length > n ? (t || '').slice(0, n) + '…' : (t || '');
+    const out = [];
+    (s.tasks || []).forEach((t) => { if ((t.title || '').toLowerCase().includes(ql)) out.push({ mod: 'today', id: t.id, label: homeSearchLabel('today', cut(t.title, 26)) }); });
+    (s.content || []).forEach((c) => { if ((c.title || '').toLowerCase().includes(ql)) out.push({ mod: 'content', id: c.id, label: homeSearchLabel('content', cut(c.title, 26)) }); });
+    (s.growth || []).forEach((g) => { if ((g.title || '').toLowerCase().includes(ql)) out.push({ mod: 'growth', id: g.id, label: homeSearchLabel('growth', cut(g.title, 26)) }); });
+    (s.reviews || []).forEach((r) => { if ((r.content || '').toLowerCase().includes(ql)) out.push({ mod: 'rd', id: r.id, label: homeSearchLabel('rd', cut(r.content, 26)) }); });
+    (s.decisions || []).forEach((d) => { if ((d.question || '').toLowerCase().includes(ql)) out.push({ mod: 'rd', id: d.id, label: homeSearchLabel('rd', cut(d.question, 26)) }); });
+    const top = out.slice(0, 30);
+    panel.innerHTML = top.length
+      ? top.map((r) => `<button class="hsr-row" data-mod="${esc(r.mod)}" data-id="${esc(r.id)}">
+             <span class="hsr-ic">${homeSearchIcon(r.mod)}</span>
+             <span class="hsr-lab">${esc(r.label)}</span>
+           </button>`).join('')
+      : `<div class="hsr-empty">没找到，换个词试试。</div>`;
+    panel.style.display = 'block';
+    panel.querySelectorAll('.hsr-row').forEach((b) => b.onclick = () => {
+      const mod = b.dataset.mod;
+      panel.style.display = 'none'; panel.innerHTML = '';
+      const inp = $('#home-search'); if (inp) inp.value = '';
+      navigate(mod);   // 已存在的 navigate() 也会更新当前模块、触发 render()/saveView()，但不会写 s.tasks
+    });
   }
   function homeAddTask() {
     const inp = $('#home-task-title'); const sel = $('#home-task-cat');
     const v = inp ? inp.value.trim() : '';
     const cat = sel ? sel.value : '';
-    // 正式任务类：统一走 editTask 表单（类型 + 分类 + 日期），单一来源 TASK_TYPES/TASK_CATS
-    editTask(null, { type: 'todo', cat, title: v, date: today() });
+    if (!v) return;
+    // 【V2.1 P1-4】首页最短路径：标题+区域已明确，直接 addTask（不弹模态）
+    //   - 区域已默认 'edu'，类型默认 'todo'（用户指令）
+    //   - 完全不读、不写、不迁移任何现有任务数据
+    //   - 今日任务（qa-core/qa-todo）保留全表单确认（用户允许），不走这里
+    addTask('todo', v, today(), cat);
     if (inp) inp.value = '';
-    if (sel) sel.value = 'edu';
   }
   // 临时记录：点击进入大面积备忘录编辑（复用 tasks type='temp'，不建第二套）
   function homeAddTempModal() {
@@ -1156,6 +1242,10 @@
       const key = t.done ? (t.doneAt || t.date) : t.date;
       (taskByDate[key] = taskByDate[key] || []).push(t);
     });
+    // 【V2.1 P1-3】月视图按日排序：每日内未完成在上、已完成在下，保持日期顺序（按 t.done 稳定排序）
+    Object.keys(taskByDate).forEach((k) => {
+      taskByDate[k].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0));
+    });
 
     // 月度概览（实时从同一 tasks 计算，无第二套数据）
     const ym = calYear + '-' + String(calMonth + 1).padStart(2, '0');
@@ -1323,7 +1413,7 @@
         .map((g) => ({ c: { key: g.key, name: g.title, evidence: g.evidence || [] }, g }))
     );
     if (!rows.length) {
-      assetHtml += `<div class="empty"><span class="em">🧠</span>记录不足，暂不形成能力资产。先多记一些真实完成的事。</div></div>`;
+      assetHtml += `<div class="empty-compact">🧠 记录不足，暂不形成能力资产。先多记一些真实完成的事。</div></div>`;
     } else {
       rows.forEach(({ c, g }) => {
         const st = g ? g.status : 'found';
@@ -1351,7 +1441,7 @@
     const pub = s.content.filter((c) => c.status === '已发布');
     let projHtml = `<div class="card"><h3>🏆 项目 / 商业履历 <span class="tag">仅真实记录</span></h3>`;
     if (!ecom.length && !decs.length && !pub.length) {
-      projHtml += `<div class="empty"><span class="em">🏆</span>暂无记录。做过的事、做出的决定，记下来就是履历。</div></div>`;
+      projHtml += `<div class="empty-compact">🏆 暂无记录。做过的事、做出的决定，记下来就是履历。</div></div>`;
     } else {
       if (ecom.length) {
         projHtml += `<div class="li-sub" style="margin:6px 0 2px">🛒 电商实践（${ecom.length}）</div>`;
@@ -1369,11 +1459,12 @@
     }
     html += projHtml;
 
-    // —— D 我的成长路径：年度 → 月度 → 行动 + 我的方法 ——
+    // —— D 我的成长路径：先记录 → 再沉淀 → 最后形成地图 ——
     const years = s.growth.filter((g) => g.type === 'year');
-    let pathHtml = `<div class="card"><h3>🧭 我的成长路径 <span class="tag">方向 → 目标 → 行动</span></h3>
-      <button class="btn sm" data-act="add-growth" data-type="year">+ 添加年度方向</button></div>`;
-    if (!years.length) pathHtml += `<div class="empty"><span class="em">🌱</span>先写下今年的方向吧，比如「建立稳定教育获客体系」。</div>`;
+    let pathHtml = `<div class="card"><h3>🧭 我的成长路径 <span class="tag">先记录 → 再沉淀 → 最后形成地图</span></h3>
+      <div class="tiny muted" style="margin-bottom:10px">完成更多任务和项目后，这里会逐渐形成你的成长路径。</div>
+      <button class="btn sm" data-act="add-growth" data-type="year">+ 添加一个方向</button></div>`;
+    if (!years.length) pathHtml += `<div class="empty-compact">🌱 先写下今年的方向，比如「建立稳定教育获客体系」。</div>`;
     years.forEach((y) => {
       const months = s.growth.filter((g) => g.type === 'month' && g.parent === y.id);
       let block = `<div class="card"><div style="display:flex;align-items:center;gap:10px">
@@ -1402,10 +1493,10 @@
       pathHtml += block;
     });
     const methods = s.growth.filter((g) => g.type === 'method');
-    let methodHtml = `<div class="card"><h3>🔧 我的方法 <span class="tag">模仿 → 拆解 → 实践 → 验证</span></h3>
-      <div class="tiny muted" style="margin-bottom:6px">只记你真正在用的办法，别列「想学」的。</div>
+    let methodHtml = `<div class="card"><h3>🔧 我的方法 <span class="tag">先模仿 → 再拆解 → 后实践</span></h3>
+      <div class="tiny muted" style="margin-bottom:8px">只记你真正在用的办法，别列「想学」的。</div>
       <button class="btn sm" data-act="add-method">+ 添加方法</button></div>`;
-    if (!methods.length) methodHtml += `<div class="empty"><span class="em">🔧</span>还没有记录方法。一个被你反复验证有效的动作，就是方法。</div>`;
+    if (!methods.length) methodHtml += `<div class="empty-compact">🔧 一个被你反复验证有效的动作，就是方法。</div>`;
     methods.forEach((mth) => {
       const st = mth.status || 'explore';
       const stText = st === 'formed' ? '已形成' : st === 'verify' ? '验证中' : '探索中';
@@ -1431,22 +1522,26 @@
     // —— E 成长痕迹：与首页同源（数据源 / 折叠 / 数量 / 看全部 完全一致）——
     const traceAll = s.tasks.filter((t) => t.done && !t.canceled)
       .sort((a, b) => String(b.doneAt || b.date || '').localeCompare(String(a.doneAt || a.date || '')));
-    const tracePreview = traceAll.slice(0, 6);
+    const tracePreview = traceAll.slice(0, 5); // 内容驱动高度：折叠态更紧凑
     const traceOpen = App.folds['trace'];
+    // 【V2.1 P2】成长痕迹区去大空盒 + 改名为"成长痕迹"
     html += `<div class="card"><h3 class="fold-h" data-act="toggle-fold" data-id="trace">
-      <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span>📚 最近成长痕迹
+      <span class="fold-ic">${traceOpen ? '▾' : '▸'}</span>📚 成长痕迹
       <span class="tag">${traceAll.length} 条</span></h3>`;
-    html += `<div style="margin:8px 0 2px"><button class="btn soft sm" data-act="trace-see-all">看全部 →</button></div>`;
-    if (traceOpen) {
-      if (traceAll.length) {
-        html += `<div class="home-list">` + traceAll.map((t) =>
-          `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
-        ).join('') + `</div>`;
-      } else {
-        html += `<div class="empty"><span class="em">📚</span>还没有完成的记录。</div>`;
-      }
-    } else if (tracePreview.length) {
-      html += `<div class="tiny muted" style="margin-top:2px">最新：${esc(tracePreview[0].title)}　·　点标题展开全部 ${traceAll.length} 条</div>`;
+    if (traceAll.length === 0) {
+      html += `<div class="empty-compact">📚 还没有完成的记录。<button class="mini ghost" data-act="nav" data-id="today">去记录</button></div>`;
+    } else if (traceOpen) {
+      html += `<div class="home-list">` + traceAll.map((t) =>
+        `<div class="home-li" data-act="nav" data-id="growth"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+      ).join('') + `</div>`;
+      // 内容驱动：放在列表底部，不必单独大按钮
+      html += `<div style="margin-top:6px;font-size:12px;color:var(--ink-soft)">共 ${traceAll.length} 条，按完成时间倒序</div>`;
+    } else {
+      // 折叠态：简短预览 5 条 + 小提示，不用大块
+      html += `<div class="home-list">` + tracePreview.map((t) =>
+        `<div class="home-li"><span class="home-li-t">${esc(t.title)}</span>${t.cat ? `<span class="chip ${catClass(t.cat)}">${catName(t.cat)}</span>` : ''}</div>`
+      ).join('') + `</div>`;
+      if (traceAll.length > tracePreview.length) html += `<div style="margin-top:6px;font-size:12px;color:var(--ink-soft)">还有 ${traceAll.length - tracePreview.length} 条 · 点上方标题展开</div>`;
     }
     html += `</div>`;
 
@@ -2904,15 +2999,20 @@
     order.forEach((g) => {
       const items = groups[g]; if (!items || !items.length) return;
       html += `<div class="card"><h3>${g} <span class="tag">${items.length} 项</span></h3>`;
+      // 【V2.1 P1-1】横排卡片：checkbox | 标题 + 删除时间 + 原模块 | 操作按钮；小屏堆叠
       items.forEach((t) => {
         const checked = sel[t.id] ? 'checked' : '';
-        html += `<div class="list-item" style="display:flex;align-items:flex-start;gap:10px">
+        const title = esc(trashPreview(t));
+        const catLabel = catName[t.cat] || '其他';
+        const from = esc(moduleNameOf(t.origEntity));
+        const delAt = esc(t.deletedAt || '');
+        html += `<div class="list-item trash-item">
           <label class="trash-check"><input type="checkbox" data-act="trash-toggle" data-id="${t.id}" ${checked}></label>
-          <div class="li-main" style="flex:1;min-width:0">
-            <div class="li-top"><div class="li-title">${esc(trashPreview(t))}</div><span class="badge">${catName[t.cat] || '其他'}</span></div>
-            <div class="li-sub">原模块：${esc(moduleNameOf(t.origEntity))}　·　删除于 ${esc(t.deletedAt || '')}</div>
+          <div class="li-main">
+            <div class="li-top"><span class="li-title">${title}</span><span class="badge">${catLabel}</span></div>
+            <div class="li-sub">${from}　·　删除于 ${delAt}</div>
           </div>
-          <div class="row-actions" style="flex-direction:column;gap:6px;flex-shrink:0">
+          <div class="trash-actions">
             <button class="mini green" data-act="trash-restore" data-id="${t.id}">恢复</button>
             <button class="mini ghost" data-act="trash-purge" data-id="${t.id}">彻底移除</button>
           </div>

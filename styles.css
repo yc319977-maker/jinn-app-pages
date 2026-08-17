@@ -310,8 +310,12 @@ header.topbar {
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
 
 /* ---------- 杂项 ---------- */
-.empty { text-align: center; color: var(--ink-soft); padding: 26px 10px; font-size: 13.5px; }
-.empty .em { font-size: 30px; display: block; margin-bottom: 8px; }
+.empty { text-align: center; color: var(--ink-soft); padding: 14px 10px; font-size: 13.5px; }
+.empty .em { font-size: 26px; display: block; margin-bottom: 4px; }
+/* 【V2.1 P2】轻量空态：内容驱动高度 = 无 padding/border，简短文字+明确动作 */
+.empty-compact { color: var(--ink-soft); padding: 9px 13px; font-size: 13px; line-height: 1.65;
+  background: var(--bg-soft); border-radius: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.empty-compact .mini { padding: 2px 9px; font-size: 12px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
 .stat { background: var(--card); border-radius: var(--radius-s); padding: 14px; box-shadow: var(--shadow); }
@@ -702,3 +706,46 @@ header.topbar {
   .hdc-badge { width: 50px; height: 50px; }
   .hdc-badge .hdc-d { font-size: 19px; }
 }
+
+/* ============================================================
+   V2.1 P1
+   - P1-1 回收站：横排按钮组 + 卡片化（保留原有的 .list-item 样式）
+   - P1-5 顶部固定"回首页"按钮（icon-btn 复用，复用现有顶栏 .icon-btn）
+   - P1-6 首页顶部关键词搜索 + 下拉浮层
+   ============================================================ */
+
+/* P1-1 回收站条目：横排；小屏操作按钮自动换行到下一行（按内容驱动高度） */
+.trash-item { display: flex; align-items: center; gap: 10px; }
+.trash-item .li-main { flex: 1; min-width: 0; }
+.trash-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.trash-actions .mini { flex: 0 0 auto; }
+@media (max-width: 540px) {
+  .trash-item { flex-wrap: wrap; }
+  .trash-actions { flex-basis: 100%; justify-content: flex-end; }
+}
+
+/* P1-5 顶栏固定"回首页"快捷：与现有 .icon-btn 同风格 */
+.home-shortcut { font-size: 17px; }
+
+/* P1-6 首页顶部搜索：输入框 + 绝对定位的下拉浮层 */
+.home-search-wrap { position: relative; margin-bottom: 12px; }
+.home-search {
+  width: 100%; padding: 12px 16px; border-radius: 14px;
+  border: 1.5px solid var(--line); background: var(--card);
+  font-size: 14.5px; outline: none; transition: all .15s;
+}
+.home-search:focus { border-color: var(--terra); box-shadow: 0 0 0 3px rgba(232,168,124,.12); }
+.hsr-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--card); border-radius: 14px; box-shadow: 0 8px 24px rgba(120,90,60,.14);
+  border: 1px solid var(--line); padding: 6px; max-height: 360px; overflow-y: auto; z-index: 50;
+}
+.hsr-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border-radius: 10px; background: transparent; border: none;
+  text-align: left; cursor: pointer; font-size: 13.5px; color: var(--ink); transition: all .12s;
+}
+.hsr-row:hover { background: var(--bg-soft); }
+.hsr-ic { font-size: 16px; flex: 0 0 auto; width: 22px; text-align: center; }
+.hsr-lab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hsr-empty { padding: 14px; text-align: center; color: var(--ink-soft); font-size: 13px; }
